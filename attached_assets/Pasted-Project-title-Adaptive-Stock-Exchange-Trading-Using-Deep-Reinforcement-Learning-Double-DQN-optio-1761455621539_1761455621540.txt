@@ -1,0 +1,112 @@
+Project title: Adaptive Stock Exchange Trading Using Deep Reinforcement Learning (Double DQN + optional Actor-Critic)
+
+Short description:
+Build a full-stack, production-grade AI trading web app that implements a Reinforcement Learning agent. Primary agent: Double DQN (discrete actions). Optional experimental agent: Actor-Critic (SAC) for continuous allocations. Support historical backtesting (with corporate action adjustments), walk-forward validation, paper trading, and a near-real-time decision endpoint using global market data. Use Gemini (gemini-2.5-flash) for NLP-based sentiment & feature extraction only. RL core and MLOps in Python/PyTorch as a FastAPI microservice; frontend in Next.js (TypeScript, React, Tailwind). Provide rigorous testing, observability, and NFRs.
+
+Primary goals / user stories:
+- Users can connect/upload portfolios and receive ranked buy/sell/hold recommendations with confidence metrics (Q-values).
+- Researchers can configure hyperparams, run training/backtests, inspect loss/Q-value curves, and compare runs using W&B.
+- Admins can monitor live paper-trading performance vs benchmark (e.g., SPY), detect model drift, and receive alerts with automatic rollback or quarantine options.
+- Default mode: Paper Trading Only. Live trading requires explicit multi-step enable and compliance confirmation.
+
+Architecture summary:
+- Frontend: Next.js (TS), Tailwind. Pages: Dashboard, Portfolio, Backtest & Experiments, Training Control, Paper Trading Simulator, Settings (API keys & toggles), Logs & Diagnostics. Real-time UI via WebSockets or SSE.
+- Web Backend (Next.js API routes): Auth (Clerk/NextAuth), secure settings proxy, user data endpoints, and gateway endpoints to RL microservice.
+- RL Microservice (Python FastAPI):
+  - Data ingestion & preprocessing: yfinance historical downloader + polling; **automatically adjust historical data for splits, dividends, and corporate actions**; support premium data provider config.
+  - Gym-like environment: state includes normalized price windows, SMA/EMA/RSI/MACD, normalized volume, Gemini sentiment features (aggregated), VIX proxy, portfolio state (holdings, cash).
+  - Agents:
+    - Primary: Double DQN (PyTorch) **implemented in a separate Python file `double_dqn.py`** within a `models` or `agents` folder. This file should define the neural network, replay buffer, target network, forward pass, loss function, and update logic, and be importable into training and inference scripts.
+    - Experimental: Actor-Critic (SAC) for continuous allocation mode (separate agent/file if implemented).
+  - Training loop: experience replay, target network, prioritized replay optional, dueling net optional; job queue for async training (Celery/Redis or RQ).
+  - Backtester: vectorized backtesting with transaction costs, slippage models, and position sizing.
+  - Endpoints: /train, /step (low-latency inference), /evaluate, /status/:jobid, /models, /backtest.
+- Datastores:
+  - Supabase/Postgres for users, portfolios, model metadata.
+  - TimescaleDB or Postgres time-series schema for OHLCV and features.
+  - Redis for caching, queues, rate limiting.
+  - S3-compatible storage for artifacts & checkpoints.
+
+Data & RL specs:
+- **Data integrity**: Adjust prices for splits/dividends/corporate actions. Impute or flag missing data. Use outlier filtering and timezone normalization.
+- **State**: last N timesteps per asset (normalized OHLCV), technical indicators, Gemini sentiment (24–72h aggregates), macro indicators, holdings/cash.
+- **Action modes**:
+  - Mode A (Discrete — Double DQN): per asset discrete actions {Buy 5%, Buy 10%, Hold, Sell 5%, Sell 10%}.
+  - Mode B (Continuous — SAC, experimental): target allocation vector (sum <= 1). Implement as a separate agent/file; UI toggles mode.
+- **Reward**:
+  - Default: log return of portfolio value per step minus transaction cost penalty.
+  - Optional risk-adjusted variants: rolling Sharpe/Sortino penalties and drawdown constraints.
+- **Training hyperparams (defaults)**:
+  - replay_size=1e6, batch_size=64, lr=1e-4, gamma=0.99, epsilon: 1.0→0.05 over 200k steps, target_update_freq configurable.
+- **Evaluation**: walk-forward validation with configurable windows; metrics: CAGR, Annualized Vol, Sharpe, Sortino, Max Drawdown, Win Rate, Average P/L per trade.
+- **Reproducibility**: save seeds, deterministic PyTorch flags, and a training-data hash for every model artifact.
+
+Non-Functional Requirements (NFRs):
+- Latency: /step P95 < 250ms (production target).
+- Data freshness: live data within 15 seconds.
+- Scalability: support >=100 concurrent paper-simulations with up to 20 assets each.
+- Reliability: RL microservice uptime target 99.9%; training jobs resumable from last checkpoint.
+- Cost control: batch sentiment extraction and throttling for Gemini calls.
+
+Integrations:
+- **Gemini**: gemini-2.5-flash — server-side usage for sentiment, summarization, and feature engineering only. Batch historically, stream-lite in real-time. Respect rate limits and cost constraints.
+- **Market Data**: yfinance by default; add support for premium providers (IEX/Polygon) for production.
+- **Broker Connectors**: optional Alpaca/IB sandbox connectors (stored server-side).
+
+Security & secrets:
+- Never expose GEMINI_API_KEY, broker keys, or DB secrets in browser. Use server-side secrets manager and env vars.
+- Use TLS, OAuth/Clerk for auth, role-based access, and audit logs for live-trading actions.
+- Multi-step enabling and audit trail for any live trading toggle.
+
+Observability & MLOps:
+- W&B for experiment tracking and artifact storage.
+- Live metrics via Prometheus/Grafana or cloud provider logs; drift detection alerts (thresholds on returns/behavior).
+- Model versioning and semantic metadata (hyperparams, data hash, performance).
+
+Testing:
+- Unit tests (PyTest) for env, replay buffer, reward function.
+- Integration tests: short training on synthetic data verifies loss/metric behavior.
+- Backtest reproducibility tests (deterministic seeds).
+- E2E UI tests with Playwright/Cypress (create portfolio → run backtest → inspect results).
+- Safety tests: enforce position sizing and hard limits.
+
+APIs (examples):
+- Web app: GET /api/portfolio, POST /api/portfolio, POST /api/backtest, GET /api/backtest/:id, POST /api/papertrade, GET /api/action/:ticker, POST /api/settings/keys.
+- RL service: POST /train, POST /step, GET /status/:jobid, GET /models, POST /evaluate.
+
+Env vars (.env.example):
+GEMINI_API_KEY=replace_with_gemini_key
+GEMINI_MODEL=gemini-2.5-flash
+SUPABASE_URL=
+SUPABASE_KEY=
+DATABASE_URL=postgres://...
+TIMESCALEDB_URL=...
+REDIS_URL=redis://...
+S3_BUCKET=
+S3_REGION=
+S3_ACCESS_KEY_ID=
+S3_SECRET_ACCESS_KEY=
+WAND_B_API_KEY=
+BROKER_SANDBOX_API_KEY=
+VERCEL_TOKEN=
+MARKET_DATA_PROVIDER=YFINANCE|IEX|POLYGON
+MARKET_DATA_API_KEY=
+
+Deliverables:
+1. Full Next.js scaffold (frontend + API routes + auth).
+2. FastAPI Python RL microservice scaffold with **Double DQN in separate `double_dqn.py`** and optional SAC (scripts, Dockerfile).
+3. Docker-compose for local dev (Next.js + FastAPI + Postgres/Timescale + Redis + MinIO).
+4. .env.example and secrets guidance.
+5. Unit test skeleton + sample integration/backtest script.
+6. README: run locally, run training, run backtest, deploy instructions.
+7. Monitoring playbook: steps to enable/disable live trading, drift thresholds, rollback procedure.
+
+Compliance & disclaimer:
+Mode defaults to Paper Trading. Live trading is explicitly disabled by default and requires documented approvals. UI shows a persistent disclaimer: "Educational / Research only. Not investment advice."
+
+Important engineering notes:
+- Batch Gemini for historical feature extraction; use streamed lightweight sentiment for near-real-time inference.
+- Implement adaptive backoff & cache for market data to avoid hitting public rate limits.
+- Keep continuous allocation separated from discrete DQN code paths to avoid architectural errors.
+
+End of spec.
