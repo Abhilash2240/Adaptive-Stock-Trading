@@ -1,0 +1,518 @@
+"""
+Double Deep Q-Network (DDQN) Agent for Stock Trading
+=====================================================
+Implements a production-grade DDQN agent with experience replay, target network,
+and optional enhancements (dueling architecture, prioritized replay).
+
+Author: Generated for Adaptive Stock Exchange Trading Project
+"""
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import numpy as np
+from collections import deque, namedtuple
+from typing import Tuple, List, Optional, Dict
+import random
+
+
+# Experience tuple for replay buffer
+Experience = namedtuple('Experience', ['state', 'action', 'reward', 'next_state', 'done'])
+
+
+class QNetwork(nn.Module):
+    """
+    Deep Q-Network with optional Dueling architecture.
+    
+    Args:
+        state_dim: Dimension of state space
+        action_dim: Number of discrete actions
+        hidden_dims: List of hidden layer dimensions
+        dueling: Whether to use dueling architecture
+        dropout: Dropout probability for regularization
+    """
+    
+    def __init__(
+        self, 
+        state_dim: int, 
+        action_dim: int,
+        hidden_dims: List[int] = [256, 256, 128],
+        dueling: bool = False,
+        dropout: float = 0.1
+    ):
+        super(QNetwork, self).__init__()
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        self.dueling = dueling
+        
+        # Build feature extraction layers
+        layers = []
+        input_dim = state_dim
+        
+        for hidden_dim in hidden_dims:
+            layers.extend([
+                nn.Linear(input_dim, hidden_dim),
+                nn.LayerNorm(hidden_dim),  # Layer normalization for stability
+                nn.ReLU(),
+                nn.Dropout(dropout)
+            ])
+            input_dim = hidden_dim
+        
+        self.feature_layers = nn.Sequential(*layers)
+        
+        if dueling:
+            # Dueling DQN: separate value and advantage streams
+            self.value_stream = nn.Sequential(
+                nn.Linear(hidden_dims[-1], 128),
+                nn.ReLU(),
+                nn.Linear(128, 1)
+            )
+            
+            self.advantage_stream = nn.Sequential(
+                nn.Linear(hidden_dims[-1], 128),
+                nn.ReLU(),
+                nn.Linear(128, action_dim)
+            )
+        else:
+            # Standard DQN
+            self.output_layer = nn.Linear(hidden_dims[-1], action_dim)
+    
+    def forward(self, state: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass through the network.
+        
+        Args:
+            state: State tensor [batch_size, state_dim]
+            
+        Returns:
+            Q-values for each action [batch_size, action_dim]
+        """
+        features = self.feature_layers(state)
+        
+        if self.dueling:
+            value = self.value_stream(features)
+            advantage = self.advantage_stream(features)
+            # Q(s,a) = V(s) + (A(s,a) - mean(A(s,a)))
+            q_values = value + (advantage - advantage.mean(dim=1, keepdim=True))
+        else:
+            q_values = self.output_layer(features)
+        
+        return q_values
+
+
+class ReplayBuffer:
+    """
+    Experience Replay Buffer with optional Prioritized Experience Replay.
+    
+    Args:
+        capacity: Maximum buffer size
+        prioritized: Whether to use prioritized replay
+        alpha: Priority exponent (for prioritized replay)
+    """
+    
+    def __init__(self, capacity: int = 1000000, prioritized: bool = False, alpha: float = 0.6):
+        self.capacity = capacity
+        self.buffer = deque(maxlen=capacity)
+        self.prioritized = prioritized
+        self.alpha = alpha
+        self.priorities = deque(maxlen=capacity)
+        self.position = 0
+    
+    def push(self, state, action, reward, next_state, done, priority: float = None):
+        """Add an experience to the buffer."""
+        experience = Experience(state, action, reward, next_state, done)
+        self.buffer.append(experience)
+        
+        if self.prioritized:
+            max_priority = max(self.priorities) if self.priorities else 1.0
+            self.priorities.append(priority if priority is not None else max_priority)
+    
+    def sample(self, batch_size: int, beta: float = 0.4) -> Tuple:
+        """
+        Sample a batch of experiences.
+        
+        Args:
+            batch_size: Number of experiences to sample
+            beta: Importance sampling exponent (for prioritized replay)
+            
+        Returns:
+            Tuple of (states, actions, rewards, next_states, dones, indices, weights)
+        """
+        if self.prioritized:
+            # Prioritized sampling
+            priorities = np.array(self.priorities)
+            probs = priorities ** self.alpha
+            probs /= probs.sum()
+            
+            indices = np.random.choice(len(self.buffer), batch_size, p=probs, replace=False)
+            experiences = [self.buffer[idx] for idx in indices]
+            
+            # Importance sampling weights
+            total = len(self.buffer)
+            weights = (total * probs[indices]) ** (-beta)
+            weights /= weights.max()
+            weights = torch.FloatTensor(weights)
+        else:
+            # Uniform sampling
+            experiences = random.sample(self.buffer, batch_size)
+            indices = None
+            weights = torch.ones(batch_size)
+        
+        # Unpack experiences
+        states = torch.FloatTensor([e.state for e in experiences])
+        actions = torch.LongTensor([e.action for e in experiences])
+        rewards = torch.FloatTensor([e.reward for e in experiences])
+        next_states = torch.FloatTensor([e.next_state for e in experiences])
+        dones = torch.FloatTensor([e.done for e in experiences])
+        
+        return states, actions, rewards, next_states, dones, indices, weights
+    
+    def update_priorities(self, indices: List[int], priorities: np.ndarray):
+        """Update priorities for prioritized replay."""
+        if self.prioritized and indices is not None:
+            for idx, priority in zip(indices, priorities):
+                self.priorities[idx] = priority
+    
+    def __len__(self):
+        return len(self.buffer)
+
+
+class DoubleDQNAgent:
+    """
+    Double DQN Agent for stock trading with discrete actions.
+    
+    Actions per asset: {Buy 5%, Buy 10%, Hold, Sell 5%, Sell 10%}
+    
+    Args:
+        state_dim: Dimension of state vector
+        action_dim: Number of discrete actions
+        learning_rate: Learning rate for optimizer
+        gamma: Discount factor
+        epsilon_start: Initial exploration rate
+        epsilon_end: Final exploration rate
+        epsilon_decay: Epsilon decay steps
+        target_update_freq: Steps between target network updates
+        device: torch device (cpu/cuda)
+        **kwargs: Additional configuration
+    """
+    
+    def __init__(
+        self,
+        state_dim: int,
+        action_dim: int,
+        learning_rate: float = 1e-4,
+        gamma: float = 0.99,
+        epsilon_start: float = 1.0,
+        epsilon_end: float = 0.05,
+        epsilon_decay: int = 200000,
+        target_update_freq: int = 1000,
+        batch_size: int = 64,
+        buffer_size: int = 1000000,
+        dueling: bool = False,
+        prioritized_replay: bool = False,
+        device: str = 'cuda' if torch.cuda.is_available() else 'cpu',
+        **kwargs
+    ):
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        self.gamma = gamma
+        self.epsilon = epsilon_start
+        self.epsilon_start = epsilon_start
+        self.epsilon_end = epsilon_end
+        self.epsilon_decay = epsilon_decay
+        self.target_update_freq = target_update_freq
+        self.batch_size = batch_size
+        self.device = torch.device(device)
+        self.steps = 0
+        
+        # Networks
+        self.policy_net = QNetwork(
+            state_dim, action_dim, 
+            dueling=dueling,
+            dropout=kwargs.get('dropout', 0.1)
+        ).to(self.device)
+        
+        self.target_net = QNetwork(
+            state_dim, action_dim,
+            dueling=dueling,
+            dropout=kwargs.get('dropout', 0.1)
+        ).to(self.device)
+        
+        self.target_net.load_state_dict(self.policy_net.state_dict())
+        self.target_net.eval()
+        
+        # Optimizer
+        self.optimizer = optim.Adam(
+            self.policy_net.parameters(), 
+            lr=learning_rate,
+            weight_decay=kwargs.get('weight_decay', 1e-5)
+        )
+        
+        # Replay buffer
+        self.replay_buffer = ReplayBuffer(
+            capacity=buffer_size,
+            prioritized=prioritized_replay,
+            alpha=kwargs.get('alpha', 0.6)
+        )
+        
+        # Loss tracking
+        self.loss_history = []
+        self.q_value_history = []
+    
+    def select_action(self, state: np.ndarray, explore: bool = True) -> int:
+        """
+        Select action using epsilon-greedy policy.
+        
+        Args:
+            state: Current state
+            explore: Whether to use exploration
+            
+        Returns:
+            Selected action index
+        """
+        if explore and random.random() < self.epsilon:
+            return random.randrange(self.action_dim)
+        
+        with torch.no_grad():
+            state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+            q_values = self.policy_net(state_tensor)
+            action = q_values.argmax(dim=1).item()
+            
+            # Track Q-values for monitoring
+            self.q_value_history.append(q_values.max().item())
+            
+            return action
+    
+    def get_q_values(self, state: np.ndarray) -> np.ndarray:
+        """
+        Get Q-values for all actions (for ranking/confidence metrics).
+        
+        Args:
+            state: Current state
+            
+        Returns:
+            Q-values array
+        """
+        with torch.no_grad():
+            state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+            q_values = self.policy_net(state_tensor)
+            return q_values.cpu().numpy()[0]
+    
+    def store_transition(self, state, action, reward, next_state, done):
+        """Store transition in replay buffer."""
+        self.replay_buffer.push(state, action, reward, next_state, done)
+    
+    def update(self, beta: float = 0.4) -> Optional[float]:
+        """
+        Perform one training step using Double DQN algorithm.
+        
+        Args:
+            beta: Importance sampling exponent for prioritized replay
+            
+        Returns:
+            Loss value if update performed, None otherwise
+        """
+        if len(self.replay_buffer) < self.batch_size:
+            return None
+        
+        # Sample batch
+        states, actions, rewards, next_states, dones, indices, weights = \
+            self.replay_buffer.sample(self.batch_size, beta)
+        
+        states = states.to(self.device)
+        actions = actions.to(self.device)
+        rewards = rewards.to(self.device)
+        next_states = next_states.to(self.device)
+        dones = dones.to(self.device)
+        weights = weights.to(self.device)
+        
+        # Current Q-values
+        current_q_values = self.policy_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
+        
+        # Double DQN: use policy net to select actions, target net to evaluate
+        with torch.no_grad():
+            next_actions = self.policy_net(next_states).argmax(dim=1)
+            next_q_values = self.target_net(next_states).gather(1, next_actions.unsqueeze(1)).squeeze(1)
+            target_q_values = rewards + (1 - dones) * self.gamma * next_q_values
+        
+        # Compute loss with importance sampling weights
+        td_errors = target_q_values - current_q_values
+        loss = (weights * td_errors.pow(2)).mean()
+        
+        # Optimize
+        self.optimizer.zero_grad()
+        loss.backward()
+        # Gradient clipping for stability
+        torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=10.0)
+        self.optimizer.step()
+        
+        # Update priorities if using prioritized replay
+        if self.replay_buffer.prioritized and indices is not None:
+            priorities = td_errors.abs().detach().cpu().numpy() + 1e-6
+            self.replay_buffer.update_priorities(indices, priorities)
+        
+        # Update target network
+        self.steps += 1
+        if self.steps % self.target_update_freq == 0:
+            self.target_net.load_state_dict(self.policy_net.state_dict())
+        
+        # Decay epsilon
+        self.epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * \
+                      np.exp(-1. * self.steps / self.epsilon_decay)
+        
+        # Track loss
+        loss_value = loss.item()
+        self.loss_history.append(loss_value)
+        
+        return loss_value
+    
+    def save(self, filepath: str, metadata: Optional[Dict] = None):
+        """
+        Save model checkpoint.
+        
+        Args:
+            filepath: Path to save checkpoint
+            metadata: Additional metadata to save
+        """
+        checkpoint = {
+            'policy_net_state_dict': self.policy_net.state_dict(),
+            'target_net_state_dict': self.target_net.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'steps': self.steps,
+            'epsilon': self.epsilon,
+            'state_dim': self.state_dim,
+            'action_dim': self.action_dim,
+            'hyperparameters': {
+                'gamma': self.gamma,
+                'epsilon_start': self.epsilon_start,
+                'epsilon_end': self.epsilon_end,
+                'epsilon_decay': self.epsilon_decay,
+                'target_update_freq': self.target_update_freq,
+                'batch_size': self.batch_size,
+            }
+        }
+        
+        if metadata:
+            checkpoint['metadata'] = metadata
+        
+        torch.save(checkpoint, filepath)
+    
+    def load(self, filepath: str):
+        """
+        Load model checkpoint.
+        
+        Args:
+            filepath: Path to checkpoint file
+        """
+        checkpoint = torch.load(filepath, map_location=self.device)
+        
+        self.policy_net.load_state_dict(checkpoint['policy_net_state_dict'])
+        self.target_net.load_state_dict(checkpoint['target_net_state_dict'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.steps = checkpoint['steps']
+        self.epsilon = checkpoint['epsilon']
+        
+        return checkpoint.get('metadata', {})
+    
+    def get_metrics(self) -> Dict:
+        """Get training metrics for monitoring."""
+        return {
+            'steps': self.steps,
+            'epsilon': self.epsilon,
+            'buffer_size': len(self.replay_buffer),
+            'avg_loss': np.mean(self.loss_history[-100:]) if self.loss_history else 0,
+            'avg_q_value': np.mean(self.q_value_history[-100:]) if self.q_value_history else 0,
+        }
+
+
+# Utility functions for action mapping
+def action_to_trade(action_idx: int, num_actions_per_asset: int = 5) -> Tuple[str, float]:
+    """
+    Convert discrete action index to trade instruction.
+    
+    Args:
+        action_idx: Action index
+        num_actions_per_asset: Number of actions per asset (default 5)
+        
+    Returns:
+        Tuple of (action_type, percentage)
+        
+    Example actions: {Buy 5%, Buy 10%, Hold, Sell 5%, Sell 10%}
+    """
+    actions_map = {
+        0: ('buy', 0.05),
+        1: ('buy', 0.10),
+        2: ('hold', 0.0),
+        3: ('sell', 0.05),
+        4: ('sell', 0.10),
+    }
+    return actions_map.get(action_idx, ('hold', 0.0))
+
+
+def trade_to_action(action_type: str, percentage: float) -> int:
+    """
+    Convert trade instruction to discrete action index.
+    
+    Args:
+        action_type: 'buy', 'sell', or 'hold'
+        percentage: Trade percentage
+        
+    Returns:
+        Action index
+    """
+    if action_type == 'hold':
+        return 2
+    elif action_type == 'buy':
+        return 0 if percentage <= 0.05 else 1
+    elif action_type == 'sell':
+        return 3 if percentage <= 0.05 else 4
+    return 2  # default to hold
+
+
+if __name__ == "__main__":
+    # Example usage and testing
+    print("Double DQN Agent - Example Usage")
+    print("=" * 50)
+    
+    # Initialize agent
+    state_dim = 100  # Example: 20 assets * 5 features
+    action_dim = 5   # Buy 5%, Buy 10%, Hold, Sell 5%, Sell 10%
+    
+    agent = DoubleDQNAgent(
+        state_dim=state_dim,
+        action_dim=action_dim,
+        dueling=True,
+        prioritized_replay=True
+    )
+    
+    print(f"Agent initialized on device: {agent.device}")
+    print(f"Policy network parameters: {sum(p.numel() for p in agent.policy_net.parameters()):,}")
+    
+    # Simulate some steps
+    for i in range(10):
+        state = np.random.randn(state_dim)
+        action = agent.select_action(state)
+        reward = np.random.randn()
+        next_state = np.random.randn(state_dim)
+        done = False
+        
+        agent.store_transition(state, action, reward, next_state, done)
+    
+    # Training step
+    if len(agent.replay_buffer) >= agent.batch_size:
+        loss = agent.update()
+        print(f"\nTraining step - Loss: {loss:.4f}")
+    
+    # Get Q-values
+    test_state = np.random.randn(state_dim)
+    q_values = agent.get_q_values(test_state)
+    print(f"\nQ-values for test state: {q_values}")
+    
+    # Action mapping
+    best_action = np.argmax(q_values)
+    action_type, percentage = action_to_trade(best_action)
+    print(f"Recommended action: {action_type.upper()} {percentage*100:.0f}%")
+    
+    print("\n" + "=" * 50)
+    print("Double DQN implementation ready for training!")
