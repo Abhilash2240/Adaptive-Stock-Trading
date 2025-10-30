@@ -3,7 +3,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { runAgentCommand } from "./agent";
+import { runAgentCommand, runAgentQuote } from "./agent";
 import { analyzeSentiment } from "./gemini";
 import { 
   insertPortfolioSchema,
@@ -408,6 +408,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(response.data);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Real-time stock quote endpoint
+  app.get("/api/quote", async (req, res) => {
+    try {
+      const symbol = (req.query.symbol as string)?.toUpperCase();
+      if (!symbol) return res.status(400).json({ error: "Required: symbol query param" });
+      const response = await runAgentQuote(symbol);
+      if (!response.ok) return res.status(404).json({ error: response.error || "not found" });
+      return res.json(response.data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 
