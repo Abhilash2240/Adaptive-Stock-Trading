@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: stocktraderl
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: PYTHON_CMD
+        value: python3
+      # - key: DATABASE_URL
+      #   value: your_database_url_here

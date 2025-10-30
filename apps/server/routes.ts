@@ -3,6 +3,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
+import { runAgentCommand } from "./agent";
 import { analyzeSentiment } from "./gemini";
 import { 
   insertPortfolioSchema,
@@ -364,21 +365,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Agent action endpoint (simulated RL agent decision)
   app.post("/api/agent/step", async (req, res) => {
     try {
-      const { ticker, state } = req.body;
-      
-      // Simulate Double DQN agent decision
-      // In production, this would call the actual Python RL microservice
-      const actions = ["BUY 5%", "BUY 10%", "HOLD", "SELL 5%", "SELL 10%"];
-      const randomAction = actions[Math.floor(Math.random() * actions.length)];
-      const qValue = 0.5 + Math.random() * 0.45; // Q-value between 0.5 and 0.95
-      
-      res.json({
-        ticker,
-        action: randomAction,
-        qValue,
-        confidence: qValue,
-        timestamp: new Date().toISOString(),
-      });
+      const { state, explore = true } = req.body;
+      if (!Array.isArray(state)) return res.status(400).json({ error: "state array is required" });
+
+      const response = await runAgentCommand<{ action: number; q_values: number[] }>({ type: "step", state, explore });
+      if (!response.ok) return res.status(500).json({ error: response.error || "agent error" });
+
+      res.json(response.data);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Agent training endpoint
+  app.post("/api/agent/train", async (req, res) => {
+    try {
+      const { transitions, epochs = 1, savePath } = req.body;
+      if (!Array.isArray(transitions) || transitions.length === 0) {
+        return res.status(400).json({ error: "transitions[] is required" });
+      }
+
+      const response = await runAgentCommand<{ epochs: number; avg_loss: number; steps: number; saved?: string }>(
+        { type: "train", transitions, epochs, savePath }
+      );
+      if (!response.ok) return res.status(500).json({ error: response.error || "agent error" });
+      res.json(response.data);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Agent test/inference on a batch of states for evaluation
+  app.post("/api/agent/test", async (req, res) => {
+    try {
+      const { states } = req.body;
+      if (!Array.isArray(states) || states.length === 0) {
+        return res.status(400).json({ error: "states[][] is required" });
+      }
+
+      const response = await runAgentCommand<{ actions: number[]; q_values: number[][] }>({ type: "test", states });
+      if (!response.ok) return res.status(500).json({ error: response.error || "agent error" });
+      res.json(response.data);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

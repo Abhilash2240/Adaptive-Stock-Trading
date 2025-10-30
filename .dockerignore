@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.local
+migrations
+apps/server/dist/public/node_modules
+apps/client/node_modules
+apps/client/dist
+apps/server/dist/index.js.map
+**/*.tsbuildinfo

@@ -21,14 +21,18 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
+      "@": path.resolve(import.meta.dirname, "apps", "client", "src"),
+      "@shared": path.resolve(import.meta.dirname, "packages", "shared", "src"),
       "@assets": path.resolve(import.meta.dirname, "attached_assets"),
     },
   },
-  root: path.resolve(import.meta.dirname, "client"),
+  root: path.resolve(import.meta.dirname, "apps", "client"),
+  base: process.env.PAGES_BUILD === "1" ? "/Adaptive-Stock-Trading/" : "/",
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    outDir:
+      process.env.PAGES_BUILD === "1"
+        ? path.resolve(import.meta.dirname, "apps", "client", "dist")
+        : path.resolve(import.meta.dirname, "apps", "server", "dist", "public"),
     emptyOutDir: true,
   },
   server: {

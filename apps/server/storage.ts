@@ -28,8 +28,18 @@ import {
   type Settings,
   type InsertSettings,
 } from "@shared/schema";
-import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
+let useDb = true;
+try {
+  if (!process.env.DATABASE_URL) useDb = false;
+} catch {
+  useDb = false;
+}
+let db: any = null;
+if (useDb) {
+  // Lazy import to avoid throwing when DATABASE_URL is missing in dev
+  ({ db } = await import("./db"));
+}
 
 export interface IStorage {
   // User operations
@@ -82,7 +92,7 @@ export interface IStorage {
   createOrUpdateSettings(settings: InsertSettings): Promise<Settings>;
 }
 
-export class DatabaseStorage implements IStorage {
+class DatabaseStorage implements IStorage {
   // User operations
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -251,4 +261,58 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
-export const storage = new DatabaseStorage();
+class InMemoryStorage implements IStorage {
+  users = new Map<string, User>();
+  portfolios = new Map<string, Portfolio>();
+  positions = new Map<string, Position>();
+  models = new Map<string, Model>();
+  trainingJobs = new Map<string, TrainingJob>();
+  backtests = new Map<string, Backtest>();
+  trades = new Map<string, Trade>();
+  paperTradingSessions = new Map<string, PaperTradingSession>();
+  settings = new Map<string, Settings>();
+
+  private genId(prefix: string) { return `${prefix}_${Math.random().toString(36).slice(2)}${Date.now()}`; }
+
+  async getUser(id: string) { return this.users.get(id); }
+  async getUserByUsername(username: string) { return Array.from(this.users.values()).find(u => (u as any).username === username); }
+  async createUser(user: InsertUser) { const id = this.genId('usr'); const now = new Date(); const obj = { ...(user as any), id, createdAt: now, updatedAt: now } as User; this.users.set(id, obj); return obj; }
+
+  async getPortfolio(id: string) { return this.portfolios.get(id); }
+  async getPortfoliosByUser(userId: string) { return Array.from(this.portfolios.values()).filter(p => p.userId === userId).sort((a,b)=>+new Date(b.createdAt)-+new Date(a.createdAt)); }
+  async createPortfolio(portfolio: InsertPortfolio) { const id = this.genId('pf'); const now = new Date(); const obj = { ...(portfolio as any), id, createdAt: now, updatedAt: now } as Portfolio; this.portfolios.set(id, obj); return obj; }
+  async updatePortfolio(id: string, updates: Partial<Portfolio>) { const cur = this.portfolios.get(id); if (!cur) return undefined; const obj = { ...cur, ...updates, updatedAt: new Date() } as Portfolio; this.portfolios.set(id, obj); return obj; }
+
+  async getPositionsByPortfolio(portfolioId: string) { return Array.from(this.positions.values()).filter(p => p.portfolioId === portfolioId).sort((a,b)=>+new Date(b.updatedAt)-+new Date(a.updatedAt)); }
+  async createPosition(position: InsertPosition) { const id = this.genId('pos'); const now = new Date(); const obj = { ...(position as any), id, createdAt: now, updatedAt: now } as Position; this.positions.set(id, obj); return obj; }
+  async updatePosition(id: string, updates: Partial<Position>) { const cur = this.positions.get(id); if (!cur) return undefined; const obj = { ...cur, ...updates, updatedAt: new Date() } as Position; this.positions.set(id, obj); return obj; }
+
+  async getModel(id: string) { return this.models.get(id); }
+  async getAllModels() { return Array.from(this.models.values()).sort((a,b)=>+new Date(b.createdAt)-+new Date(a.createdAt)); }
+  async createModel(model: InsertModel) { const id = this.genId('mdl'); const now = new Date(); const obj = { ...(model as any), id, createdAt: now, updatedAt: now } as Model; this.models.set(id, obj); return obj; }
+  async updateModel(id: string, updates: Partial<Model>) { const cur = this.models.get(id); if (!cur) return undefined; const obj = { ...cur, ...updates, updatedAt: new Date() } as Model; this.models.set(id, obj); return obj; }
+
+  async getTrainingJob(id: string) { return this.trainingJobs.get(id); }
+  async getTrainingJobsByModel(modelId: string) { return Array.from(this.trainingJobs.values()).filter(j => (j as any).modelId === modelId).sort((a,b)=>+new Date(b.createdAt)-+new Date(a.createdAt)); }
+  async createTrainingJob(job: InsertTrainingJob) { const id = this.genId('trn'); const now = new Date(); const obj = { ...(job as any), id, createdAt: now, updatedAt: now, status: (job as any).status ?? 'queued', progress: (job as any).progress ?? 0 } as TrainingJob; this.trainingJobs.set(id, obj); return obj; }
+  async updateTrainingJob(id: string, updates: Partial<TrainingJob>) { const cur = this.trainingJobs.get(id); if (!cur) return undefined; const obj = { ...cur, ...updates, updatedAt: new Date() } as TrainingJob; this.trainingJobs.set(id, obj); return obj; }
+
+  async getBacktest(id: string) { return this.backtests.get(id); }
+  async getAllBacktests() { return Array.from(this.backtests.values()).sort((a,b)=>+new Date(b.createdAt)-+new Date(a.createdAt)); }
+  async createBacktest(backtest: InsertBacktest) { const id = this.genId('bt'); const now = new Date(); const obj = { ...(backtest as any), id, createdAt: now, updatedAt: now, status: (backtest as any).status ?? 'queued' } as Backtest; this.backtests.set(id, obj); return obj; }
+  async updateBacktest(id: string, updates: Partial<Backtest>) { const cur = this.backtests.get(id); if (!cur) return undefined; const obj = { ...cur, ...updates, updatedAt: new Date() } as Backtest; this.backtests.set(id, obj); return obj; }
+
+  async getTradesByPortfolio(portfolioId: string) { return Array.from(this.trades.values()).filter(t => t.portfolioId === portfolioId).sort((a,b)=>+new Date(b.executedAt)-+new Date(a.executedAt)); }
+  async getTradesByBacktest(backtestId: string) { return Array.from(this.trades.values()).filter(t => (t as any).backtestId === backtestId).sort((a,b)=>+new Date(b.executedAt)-+new Date(a.executedAt)); }
+  async createTrade(trade: InsertTrade) { const id = this.genId('tr'); const now = new Date(); const obj = { ...(trade as any), id, executedAt: (trade as any).executedAt ?? now } as Trade; this.trades.set(id, obj); return obj; }
+
+  async getPaperTradingSession(id: string) { return this.paperTradingSessions.get(id); }
+  async getActivePaperTradingSessions() { return Array.from(this.paperTradingSessions.values()).filter(s => s.status === 'active').sort((a,b)=>+new Date(b.startedAt)-+new Date(a.startedAt)); }
+  async createPaperTradingSession(session: InsertPaperTradingSession) { const id = this.genId('ps'); const now = new Date(); const obj = { ...(session as any), id, startedAt: (session as any).startedAt ?? now, status: (session as any).status ?? 'active' } as PaperTradingSession; this.paperTradingSessions.set(id, obj); return obj; }
+  async updatePaperTradingSession(id: string, updates: Partial<PaperTradingSession>) { const cur = this.paperTradingSessions.get(id); if (!cur) return undefined; const obj = { ...cur, ...updates } as PaperTradingSession; this.paperTradingSessions.set(id, obj); return obj; }
+
+  async getSettings(userId: string) { return this.settings.get(userId); }
+  async createOrUpdateSettings(sett: InsertSettings) { const now = new Date(); const obj = { ...(sett as any), updatedAt: now } as Settings; this.settings.set(sett.userId, obj); return obj; }
+}
+
+export const storage: IStorage = useDb ? new DatabaseStorage() : new InMemoryStorage();
