@@ -37,6 +37,7 @@ jobs:
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          AGENT_PUBLIC_URL: ${{ secrets.AGENT_PUBLIC_URL }}
         run: |
           echo "Triggering Render deploy for service $RENDER_SERVICE_ID"
           # Trigger a deploy via Render API. This step uses secrets from GitHub Secrets.
