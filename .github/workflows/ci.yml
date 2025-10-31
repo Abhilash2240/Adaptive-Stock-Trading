@@ -40,8 +40,38 @@ jobs:
         run: |
           echo "Triggering Render deploy for service $RENDER_SERVICE_ID"
           # Trigger a deploy via Render API. This step uses secrets from GitHub Secrets.
-          curl -sS -X POST "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys" \
+          resp=$(curl -sS -X POST "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys" \
             -H "Authorization: Bearer ${RENDER_API_KEY}" \
             -H "Content-Type: application/json" \
-            -d '{"clearCache": false, "message": "CI: automatic deploy from GitHub Actions"}' \
-            | jq . || true
+            -d '{"clearCache": false, "message": "CI: automatic deploy from GitHub Actions"}') || true
+          echo "$resp" | jq . || true
+          deployId=$(echo "$resp" | jq -r .id)
+          if [ -z "$deployId" ] || [ "$deployId" = "null" ]; then
+            echo "Failed to create deploy; response:"; echo "$resp"; exit 0
+          fi
+
+          echo "Polling deploy status for id=$deployId"
+          # Poll deploy status until success/failed or timeout
+          for i in $(seq 1 30); do
+            status=$(curl -sS -H "Authorization: Bearer ${RENDER_API_KEY}" "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys/${deployId}" | jq -r .status)
+            echo "deploy status: $status (attempt $i)"
+            if [ "$status" = "success" ]; then
+              echo "Deploy succeeded"
+              break
+            fi
+            if [ "$status" = "failed" ]; then
+              echo "Deploy failed"; exit 1
+            fi
+            sleep 10
+          done
+
+          # Optional: smoke test agent health endpoint if AGENT_PUBLIC_URL secret is provided
+          if [ -n "${{ secrets.AGENT_PUBLIC_URL }}" ]; then
+            AGENT_PUBLIC_URL=${{ secrets.AGENT_PUBLIC_URL }}
+          fi
+          if [ -n "$AGENT_PUBLIC_URL" ]; then
+            echo "Checking agent health at $AGENT_PUBLIC_URL/healthz"
+            curl -sS --fail "$AGENT_PUBLIC_URL/healthz" | jq . || (echo "Agent health check failed"; exit 1)
+          else
+            echo "No AGENT_PUBLIC_URL provided; skipping agent health smoke test. To enable, add AGENT_PUBLIC_URL to repository secrets."
+          fi
