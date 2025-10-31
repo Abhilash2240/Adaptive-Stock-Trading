@@ -9,6 +9,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # Read Render API key from GitHub Secrets if you need it in CI (do not store keys in code)
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
 
     steps:
       - name: Checkout

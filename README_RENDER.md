@@ -45,3 +45,16 @@ Troubleshooting
 CI
 - A GitHub Actions workflow was added at `.github/workflows/ci.yml` to run `npm ci` and `npm run build` on PRs to `main` to catch build issues early.
 
+Secrets and the Render API key
+- Do NOT commit secrets (API keys, tokens) into the repository. Instead set them directly in Render or in GitHub Secrets.
+- To set the Render API key for a service:
+	1. Open the Render dashboard, go to your service, choose "Environment" -> "Environment Variables" and add a new variable named `RENDER_API_KEY` with the API key value.
+	2. For the web service, also set `AGENT_URL` to the internal worker URL (for example `http://stocktraderl-agent:9001/`).
+
+- To add the `RENDER_API_KEY` to GitHub (for use in Actions):
+	1. Open the GitHub repo -> Settings -> Secrets and variables -> Actions -> New repository secret.
+	2. Name the secret `RENDER_API_KEY` and paste the key value.
+
+CI usage
+- The repository's CI workflow reads secrets from GitHub Actions secrets if you configure them. The workflow does not contain any secret values in the code.
+

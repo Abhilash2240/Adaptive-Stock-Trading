@@ -12,6 +12,11 @@ services:
         value: production
       - key: PYTHON_CMD
         value: python3
+      # The Render API key should NOT be committed to source. Set this value in the Render
+      # dashboard for each service or use Render's secrets feature.
+      # Example (DO NOT ADD THE SECRET VALUE HERE):
+      # - key: RENDER_API_KEY
+      #   value: <set-in-render-dashboard>
       # NOTE: do NOT hardcode PORT here — Render injects a PORT environment variable at runtime.
       # If you need a database, add DATABASE_URL here or configure via Render dashboard.
       # - key: DATABASE_URL
