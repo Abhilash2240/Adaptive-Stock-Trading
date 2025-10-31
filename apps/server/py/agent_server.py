@@ -1,3 +1,4 @@
+import sys
 import json
 import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -7,10 +8,20 @@ PORT = int(os.environ.get("AGENT_PORT", "9001"))
 
 # Import helper functions from agent_service to run in-process and keep a persistent agent
 try:
-    from . import agent_service as agent_service
+    # Load agent_service module directly from file to avoid package-relative import issues
+    import importlib.util
+    from pathlib import Path
+
+    module_path = Path(__file__).resolve().parent / "agent_service.py"
+    spec = importlib.util.spec_from_file_location("agent_service", str(module_path))
+    if spec is None or spec.loader is None:
+        raise ImportError("Could not load spec for agent_service")
+    agent_service = importlib.util.module_from_spec(spec)
+    sys.modules["agent_service"] = agent_service
+    spec.loader.exec_module(agent_service)  # type: ignore
 except Exception:
-    # fallback if module import style differs
-    import agent_service as agent_service
+    # As a last resort, try a normal import if sys.path is set up
+    import agent_service as agent_service  # type: ignore
 
 # Keep a simple cache of loaded agents keyed by (state_dim, action_dim, checkpoint)
 _AGENT_CACHE: dict = {}

@@ -3,6 +3,7 @@ import json
 import os
 import numpy as np
 from pathlib import Path
+from typing import Optional
 
 # Add for yfinance and HTTP
 try:
@@ -22,7 +23,7 @@ def make_error(msg: str):
 def make_ok(data):
     return json.dumps({"ok": True, "data": data})
 
-def load_agent(state_dim: int, action_dim: int, checkpoint: str | None = None):
+def load_agent(state_dim: int, action_dim: int, checkpoint: Optional[str] = None):
     root = Path(__file__).resolve().parents[3]
     sys.path.insert(0, str(root))
     from model import DoubleDQNAgent  # type: ignore
