@@ -55,6 +55,23 @@ Secrets and the Render API key
 	1. Open the GitHub repo -> Settings -> Secrets and variables -> Actions -> New repository secret.
 	2. Name the secret `RENDER_API_KEY` and paste the key value.
 
+Helper scripts
+- This repo includes helper scripts you can run locally to set environment variables on a Render service via the Render API. They do not contain secrets — you must supply your `RENDER_API_KEY` locally.
+
+Linux/macOS (bash):
+```bash
+# set your API key locally (do not commit)
+export RENDER_API_KEY="<YOUR_KEY>"
+# run the helper to add AGENT_URL to a service
+./.render/set-env.sh <SERVICE_ID> AGENT_URL "http://stocktraderl-agent:9001/"
+```
+
+Windows PowerShell:
+```powershell
+#$env:RENDER_API_KEY = '<YOUR_KEY>'
+.\.render\set-env.ps1 -ServiceId '<SERVICE_ID>' -Key 'AGENT_URL' -Value 'http://stocktraderl-agent:9001/'
+```
+
 CI usage
 - The repository's CI workflow reads secrets from GitHub Actions secrets if you configure them. The workflow does not contain any secret values in the code.
 
