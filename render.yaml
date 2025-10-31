@@ -9,9 +9,9 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 5000
       - key: PYTHON_CMD
         value: python3
+      # NOTE: do NOT hardcode PORT here — Render injects a PORT environment variable at runtime.
+      # If you need a database, add DATABASE_URL here or configure via Render dashboard.
       # - key: DATABASE_URL
       #   value: your_database_url_here
