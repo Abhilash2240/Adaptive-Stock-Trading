@@ -3,7 +3,8 @@ services:
     name: stocktraderl
     env: docker
     plan: free
-    dockerfilePath: ./Dockerfile
+    # Use the smaller web-only Dockerfile to reduce build time and image size
+    dockerfilePath: ./Dockerfile.web
     autoDeploy: true
     healthCheckPath: /
     envVars:
@@ -19,7 +20,8 @@ services:
     name: stocktraderl-agent
     env: docker
     plan: free
-    dockerfilePath: ./Dockerfile
+    # Use the agent-specific Dockerfile which installs ML deps and runs the agent HTTP server
+    dockerfilePath: ./Dockerfile.agent
     autoDeploy: true
     # The worker will run the Python agent wrapper. Render will build the same Dockerfile
     # but run the container with the following start command (overridable in dashboard):

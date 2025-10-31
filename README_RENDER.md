@@ -1,37 +1,47 @@
 Render deployment notes
 
-This repository is configured to deploy to Render using the included `Dockerfile` and `render.yaml`.
+This repository now includes two dedicated Dockerfiles and a `render.yaml` which deploys two services to Render:
 
-What the Dockerfile does
-- Builds the monorepo using `npm ci` and `npm run build` (root package.json).
-- Builds the client with Vite and bundles the server with esbuild into `apps/server/dist`.
-- Installs Python and required Python dependencies (numpy, torch CPU wheel) in the runtime image so the RL agent files under `apps/server/py` and `model.py` can be used.
-- Runs `node apps/server/dist/index.js` as the container CMD.
+- `Dockerfile.web` — smaller web image that builds the client and server and installs only lightweight Python deps (no torch). Used by the web service.
+- `Dockerfile.agent` — agent worker image that installs heavier ML deps (torch) and runs a persistent in-process agent HTTP server. Used by the worker.
 
-Key Render notes
-- `render.yaml` is configured to use Docker (env: docker) and points to `./Dockerfile`.
-- Do NOT hardcode `PORT` in `render.yaml`. Render injects a `PORT` environment variable at runtime and the server reads `process.env.PORT` (defaults to 5000 locally).
-- If you need a database, add `DATABASE_URL` (or other environment variables) in the Render dashboard or in `render.yaml` (commented example present).
+What changed
+- Separated web and agent images to keep the web image small and quick to build.
+- Added an in-process persistent agent worker (`apps/server/py/agent_server.py`) that imports the agent code and serves an HTTP API. This avoids spawning a subprocess for each request and reduces latency.
+- The Node server will prefer calling the agent via HTTP if you set the `AGENT_URL` environment variable (e.g. `http://stocktraderl-agent:9001/` in Render). If `AGENT_URL` is not set, the Node server falls back to spawning the local Python script (for local dev).
 
-How to deploy manually on Render
-1. Push your branch to GitHub (this repo).
-2. In the Render dashboard, create a new Web Service and connect the GitHub repo.
-3. Select "Docker" as the environment type and ensure the path to the dockerfile is `./Dockerfile` (Render will detect `render.yaml` if in repo root).
-4. Ensure `autoDeploy` is enabled (or deploy manually).
-
-Troubleshooting
-- Build fails with Python/torch wheel size: Render free tier has image size limits; consider removing torch installation in the Dockerfile or using a smaller Python dependency set.
-- If your build needs private package registry access, ensure `npm` authentication is provided via Render's environment or build environment variables.
+Render notes
+- `render.yaml` defines two services:
+	- `stocktraderl` (web) — uses `Dockerfile.web` and serves your frontend + API on the Render-assigned `PORT`.
+	- `stocktraderl-agent` (worker) — uses `Dockerfile.agent` and runs `apps/server/py/agent_server.py` on port `9001`.
+- The web service should NOT hardcode `PORT` in `render.yaml`. Render injects `PORT` at runtime and the server reads `process.env.PORT`.
+- To have the Node server call the agent worker on Render, set `AGENT_URL` for the web service to the worker's internal address (Render private services or the internal DNS name, e.g. `http://stocktraderl-agent:9001/`).
 
 Local testing
-- To build locally (Linux or WSL recommended):
+- Build the web image and run locally:
 
 ```powershell
 # From repo root (Windows PowerShell)
-# Build the Docker image (may take several minutes):
-docker build -t stocktraderl:local .
-# Run the container (map port 5000 locally):
-docker run -p 5000:5000 stocktraderl:local
+# Build the web image
+docker build -t stocktraderl-web -f Dockerfile.web .
+# Run the web container (map port 5000 locally):
+docker run -p 5000:5000 stocktraderl-web
 ```
 
-- Then open http://localhost:5000 to verify the app.
+- Build the agent image and run locally:
+
+```powershell
+# Build the agent image
+docker build -t stocktraderl-agent -f Dockerfile.agent .
+# Run the agent worker (map port 9001 locally):
+docker run -p 9001:9001 stocktraderl-agent
+```
+
+- Run web and agent together locally and point the web app at the agent: set `AGENT_URL` when running the web container.
+
+Troubleshooting
+- If the agent image build is slow or large because of `torch`, consider removing or pinning to a smaller CPU-only wheel. The `Dockerfile.agent` installs `torch` with the CPU wheel; adjust as needed for your Render plan.
+
+CI
+- A GitHub Actions workflow was added at `.github/workflows/ci.yml` to run `npm ci` and `npm run build` on PRs to `main` to catch build issues early.
+

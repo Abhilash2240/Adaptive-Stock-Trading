@@ -1,0 +1,37 @@
+FROM node:20-bullseye AS builder
+WORKDIR /app
+
+# Install deps
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+# Copy sources
+COPY . .
+
+# Build server artifacts only
+RUN npm run build
+
+FROM node:20-bullseye
+WORKDIR /app
+
+# Install Python and pip
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 python3-pip \
+  && rm -rf /var/lib/apt/lists/*
+
+# Copy server artifacts and python code
+COPY --from=builder /app/apps/server/dist ./apps/server/dist
+COPY --from=builder /app/apps/server/py ./apps/server/py
+COPY --from=builder /app/model.py ./
+
+# Install agent dependencies (heavier deps allowed here)
+RUN pip3 install --no-cache-dir numpy \
+  && pip3 install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch || true
+
+ENV NODE_ENV=production
+ENV PYTHON_CMD=python3
+ENV AGENT_PORT=9001
+
+EXPOSE 9001
+
+CMD ["python3", "apps/server/py/agent_server.py"]
