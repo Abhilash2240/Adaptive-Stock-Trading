@@ -27,13 +27,10 @@ function useApiHealth() {
   const [status, setStatus] = useState<"ok"|"fail"|"checking">("checking");
   const [error, setError] = useState<string>("");
   useEffect(() => {
-    if (!api) {
-      setStatus("fail");
-      setError("VITE_API_BASE is not set. API calls will not work from GitHub Pages.");
-      return;
-    }
-    let timeout = setTimeout(() => setStatus("fail"), 4500);
-    fetch(`${api}/api/quote?symbol=AAPL`) // any /api endpoint works
+    // In local development (no VITE_API_BASE), try to reach backend on same origin
+    const baseUrl = api || "";
+    let timeout = setTimeout(() => setStatus("fail"), 10000); // Increased timeout for slower systems
+    fetch(`${baseUrl}/api/models`) // Check if backend is reachable
       .then(r => r.ok ? r.json() : Promise.reject(r))
       .then(() => {
         clearTimeout(timeout);
@@ -43,8 +40,18 @@ function useApiHealth() {
       .catch(async (e) => {
         setStatus("fail");
         try {
-          setError((await e.text?.()) || "Backend API not reachable.");
-        } catch { setError("Backend API not reachable. Is it deployed?"); }
+          if (!api) {
+            setError("Backend API not reachable. Make sure the server is running (npm run dev).");
+          } else {
+            setError((await e.text?.()) || "Backend API not reachable. Check if backend is deployed.");
+          }
+        } catch { 
+          if (!api) {
+            setError("Backend API not reachable. Make sure the server is running (npm run dev).");
+          } else {
+            setError("Backend API not reachable. Is it deployed?");
+          }
+        }
       });
     return () => timeout && clearTimeout(timeout);
   }, [api]);
@@ -84,12 +91,18 @@ function ApiBanner() {
       {error && <div style={{ marginTop: 8 }}>{error}</div>}
       {api && (
         <div style={{ marginTop: 8 }}>
-          Check backend: <a style={{ color: '#07a' }} href={`${api}/api/quote?symbol=AAPL`} target="_blank" rel="noopener noreferrer">{api}</a>
+          Check backend: <a style={{ color: '#07a' }} href={`${api}/api/models`} target="_blank" rel="noopener noreferrer">{api}</a>
         </div>
       )}
-      <div style={{ marginTop: 6, fontSize: '90%', opacity: 0.8 }}>
-        If you’re running on GitHub Pages, set <code>VITE_API_BASE</code> in your repo Actions → Variables to your backend URL (e.g., <code>https://yourapp.onrender.com</code>), and make sure backend is live.
-      </div>
+      {!api ? (
+        <div style={{ marginTop: 6, fontSize: '90%', opacity: 0.8 }}>
+          For local development: Start the server with <code>npm run dev</code>
+        </div>
+      ) : (
+        <div style={{ marginTop: 6, fontSize: '90%', opacity: 0.8 }}>
+          If you're running on GitHub Pages, set <code>VITE_API_BASE</code> in your repo Actions → Variables to your backend URL (e.g., <code>https://yourapp.onrender.com</code>), and make sure backend is live.
+        </div>
+      )}
     </div>
   );
 }
