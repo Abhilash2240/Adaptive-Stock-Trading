@@ -34,6 +34,7 @@ export default defineConfig({
         ? path.resolve(import.meta.dirname, "apps", "client", "dist")
         : path.resolve(import.meta.dirname, "apps", "server", "dist", "public"),
     emptyOutDir: true,
+    chunkSizeWarningLimit: 1000, // Increase limit to 1000 KB for large UI libraries
   },
   server: {
     fs: {
