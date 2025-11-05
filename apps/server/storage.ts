@@ -29,17 +29,26 @@ import {
   type InsertSettings,
 } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
+
 let useDb = true;
 try {
   if (!process.env.DATABASE_URL) useDb = false;
 } catch {
   useDb = false;
 }
-let db: any = null;
-if (useDb) {
-  // Lazy import to avoid throwing when DATABASE_URL is missing in dev
-  ({ db } = await import("./db"));
+
+// Lazy load db module
+let dbInstance: any = null;
+async function getDb() {
+  if (!useDb) return null;
+  if (!dbInstance) {
+    const dbModule = await import("./db");
+    dbInstance = dbModule.db;
+  }
+  return dbInstance;
 }
+
+const db = await getDb();
 
 export interface IStorage {
   // User operations
