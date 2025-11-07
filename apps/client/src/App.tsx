@@ -22,36 +22,6 @@ import PaperTrading from "@/pages/paper-trading";
 import Settings from "@/pages/settings";
 import Logs from "@/pages/logs";
 
-function useApiHealth() {
-  // Dynamically determine API base - use VITE_API_BASE if set, otherwise use current origin
-  const api = import.meta.env.VITE_API_BASE || (typeof window !== 'undefined' ? window.location.origin : '');
-  const [status, setStatus] = useState<"ok"|"fail"|"checking">("checking");
-  const [error, setError] = useState<string>("");
-  useEffect(() => {
-    if (!api) {
-      setStatus("fail");
-      setError("Cannot determine API base URL.");
-      return;
-    }
-    let timeout = setTimeout(() => setStatus("fail"), 4500);
-    fetch(`${api}/api/quote?symbol=AAPL`) // any /api endpoint works
-      .then(r => r.ok ? r.json() : Promise.reject(r))
-      .then(() => {
-        clearTimeout(timeout);
-        setStatus("ok");
-        setError("");
-      })
-      .catch(async (e) => {
-        setStatus("fail");
-        try {
-          setError((await e.text?.()) || "Backend API not reachable.");
-        } catch { setError("Backend API not reachable. Is the server running?"); }
-      });
-    return () => timeout && clearTimeout(timeout);
-  }, [api]);
-  return { status, error };
-}
-
 class ErrorBoundary extends React.Component<any, { hasError: boolean, error: Error|null }> {
   constructor(props: any) {
     super(props);
@@ -74,26 +44,6 @@ class ErrorBoundary extends React.Component<any, { hasError: boolean, error: Err
 }
 
 const BASE = import.meta.env.BASE_URL || "/";
-
-function ApiBanner() {
-  const { status, error } = useApiHealth();
-  const api = import.meta.env.VITE_API_BASE || (typeof window !== 'undefined' ? window.location.origin : '');
-  if (status === "ok") return null;
-  return (
-    <div style={{ background: "#fee", color: "#900", padding: 12, borderBottom: "1px solid #fcc", textAlign: "center" }}>
-      <div><b>Warning.</b> Cannot reach backend API.</div>
-      {error && <div style={{ marginTop: 8 }}>{error}</div>}
-      {api && (
-        <div style={{ marginTop: 8 }}>
-          Check backend: <a style={{ color: '#07a' }} href={`${api}/api/quote?symbol=AAPL`} target="_blank" rel="noopener noreferrer">{api}</a>
-        </div>
-      )}
-      <div style={{ marginTop: 6, fontSize: '90%', opacity: 0.8 }}>
-        The app automatically detects the API from the current URL. If deployed separately (e.g., GitHub Pages), set <code>VITE_API_BASE</code> to your backend URL.
-      </div>
-    </div>
-  );
-}
 
 function Router() {
   return (
@@ -154,7 +104,6 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <ApiBanner />
       <QueryClientProvider client={queryClient}>
         <ThemeProvider defaultTheme="light" storageKey="rl-trader-theme">
           <TooltipProvider>
