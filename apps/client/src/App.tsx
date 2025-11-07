@@ -23,13 +23,14 @@ import Settings from "@/pages/settings";
 import Logs from "@/pages/logs";
 
 function useApiHealth() {
-  const api = import.meta.env.VITE_API_BASE;
+  // Dynamically determine API base - use VITE_API_BASE if set, otherwise use current origin
+  const api = import.meta.env.VITE_API_BASE || (typeof window !== 'undefined' ? window.location.origin : '');
   const [status, setStatus] = useState<"ok"|"fail"|"checking">("checking");
   const [error, setError] = useState<string>("");
   useEffect(() => {
     if (!api) {
       setStatus("fail");
-      setError("VITE_API_BASE is not set. API calls will not work from GitHub Pages.");
+      setError("Cannot determine API base URL.");
       return;
     }
     let timeout = setTimeout(() => setStatus("fail"), 4500);
@@ -44,7 +45,7 @@ function useApiHealth() {
         setStatus("fail");
         try {
           setError((await e.text?.()) || "Backend API not reachable.");
-        } catch { setError("Backend API not reachable. Is it deployed?"); }
+        } catch { setError("Backend API not reachable. Is the server running?"); }
       });
     return () => timeout && clearTimeout(timeout);
   }, [api]);
@@ -76,7 +77,7 @@ const BASE = import.meta.env.BASE_URL || "/";
 
 function ApiBanner() {
   const { status, error } = useApiHealth();
-  const api = import.meta.env.VITE_API_BASE;
+  const api = import.meta.env.VITE_API_BASE || (typeof window !== 'undefined' ? window.location.origin : '');
   if (status === "ok") return null;
   return (
     <div style={{ background: "#fee", color: "#900", padding: 12, borderBottom: "1px solid #fcc", textAlign: "center" }}>
@@ -88,7 +89,7 @@ function ApiBanner() {
         </div>
       )}
       <div style={{ marginTop: 6, fontSize: '90%', opacity: 0.8 }}>
-        If you’re running on GitHub Pages, set <code>VITE_API_BASE</code> in your repo Actions → Variables to your backend URL (e.g., <code>https://yourapp.onrender.com</code>), and make sure backend is live.
+        The app automatically detects the API from the current URL. If deployed separately (e.g., GitHub Pages), set <code>VITE_API_BASE</code> to your backend URL.
       </div>
     </div>
   );
