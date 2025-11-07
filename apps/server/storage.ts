@@ -29,16 +29,23 @@ import {
   type InsertSettings,
 } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
+
+// Lazy load database only if DATABASE_URL is set
 let useDb = true;
 try {
   if (!process.env.DATABASE_URL) useDb = false;
 } catch {
   useDb = false;
 }
+
 let db: any = null;
+let dbPromise: Promise<void> | null = null;
+
 if (useDb) {
   // Lazy import to avoid throwing when DATABASE_URL is missing in dev
-  ({ db } = await import("./db"));
+  dbPromise = import("./db").then((module) => {
+    db = module.db;
+  });
 }
 
 export interface IStorage {
@@ -93,153 +100,190 @@ export interface IStorage {
 }
 
 class DatabaseStorage implements IStorage {
+  private async ensureDb() {
+    if (dbPromise) {
+      await dbPromise;
+      dbPromise = null; // Only wait once
+    }
+  }
+
   // User operations
   async getUser(id: string): Promise<User | undefined> {
+    await this.ensureDb();
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user || undefined;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
+    await this.ensureDb();
     const [user] = await db.select().from(users).where(eq(users.username, username));
     return user || undefined;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
+    await this.ensureDb();
     const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
 
   // Portfolio operations
   async getPortfolio(id: string): Promise<Portfolio | undefined> {
+    await this.ensureDb();
     const [portfolio] = await db.select().from(portfolios).where(eq(portfolios.id, id));
     return portfolio || undefined;
   }
 
   async getPortfoliosByUser(userId: string): Promise<Portfolio[]> {
+    await this.ensureDb();
     return await db.select().from(portfolios).where(eq(portfolios.userId, userId)).orderBy(desc(portfolios.createdAt));
   }
 
   async createPortfolio(portfolio: InsertPortfolio): Promise<Portfolio> {
+    await this.ensureDb();
     const [created] = await db.insert(portfolios).values(portfolio).returning();
     return created;
   }
 
   async updatePortfolio(id: string, updates: Partial<Portfolio>): Promise<Portfolio | undefined> {
+    await this.ensureDb();
     const [updated] = await db.update(portfolios).set({ ...updates, updatedAt: new Date() }).where(eq(portfolios.id, id)).returning();
     return updated || undefined;
   }
 
   // Position operations
   async getPositionsByPortfolio(portfolioId: string): Promise<Position[]> {
+    await this.ensureDb();
     return await db.select().from(positions).where(eq(positions.portfolioId, portfolioId)).orderBy(desc(positions.updatedAt));
   }
 
   async createPosition(position: InsertPosition): Promise<Position> {
+    await this.ensureDb();
     const [created] = await db.insert(positions).values(position).returning();
     return created;
   }
 
   async updatePosition(id: string, updates: Partial<Position>): Promise<Position | undefined> {
+    await this.ensureDb();
     const [updated] = await db.update(positions).set({ ...updates, updatedAt: new Date() }).where(eq(positions.id, id)).returning();
     return updated || undefined;
   }
 
   // Model operations
   async getModel(id: string): Promise<Model | undefined> {
+    await this.ensureDb();
     const [model] = await db.select().from(models).where(eq(models.id, id));
     return model || undefined;
   }
 
   async getAllModels(): Promise<Model[]> {
+    await this.ensureDb();
     return await db.select().from(models).orderBy(desc(models.createdAt));
   }
 
   async createModel(model: InsertModel): Promise<Model> {
+    await this.ensureDb();
     const [created] = await db.insert(models).values(model).returning();
     return created;
   }
 
   async updateModel(id: string, updates: Partial<Model>): Promise<Model | undefined> {
+    await this.ensureDb();
     const [updated] = await db.update(models).set({ ...updates, updatedAt: new Date() }).where(eq(models.id, id)).returning();
     return updated || undefined;
   }
 
   // Training job operations
   async getTrainingJob(id: string): Promise<TrainingJob | undefined> {
+    await this.ensureDb();
     const [job] = await db.select().from(trainingJobs).where(eq(trainingJobs.id, id));
     return job || undefined;
   }
 
   async getTrainingJobsByModel(modelId: string): Promise<TrainingJob[]> {
+    await this.ensureDb();
     return await db.select().from(trainingJobs).where(eq(trainingJobs.modelId, modelId)).orderBy(desc(trainingJobs.createdAt));
   }
 
   async createTrainingJob(job: InsertTrainingJob): Promise<TrainingJob> {
+    await this.ensureDb();
     const [created] = await db.insert(trainingJobs).values(job).returning();
     return created;
   }
 
   async updateTrainingJob(id: string, updates: Partial<TrainingJob>): Promise<TrainingJob | undefined> {
+    await this.ensureDb();
     const [updated] = await db.update(trainingJobs).set(updates).where(eq(trainingJobs.id, id)).returning();
     return updated || undefined;
   }
 
   // Backtest operations
   async getBacktest(id: string): Promise<Backtest | undefined> {
+    await this.ensureDb();
     const [backtest] = await db.select().from(backtests).where(eq(backtests.id, id));
     return backtest || undefined;
   }
 
   async getAllBacktests(): Promise<Backtest[]> {
+    await this.ensureDb();
     return await db.select().from(backtests).orderBy(desc(backtests.createdAt));
   }
 
   async createBacktest(backtest: InsertBacktest): Promise<Backtest> {
+    await this.ensureDb();
     const [created] = await db.insert(backtests).values(backtest).returning();
     return created;
   }
 
   async updateBacktest(id: string, updates: Partial<Backtest>): Promise<Backtest | undefined> {
+    await this.ensureDb();
     const [updated] = await db.update(backtests).set(updates).where(eq(backtests.id, id)).returning();
     return updated || undefined;
   }
 
   // Trade operations
   async getTradesByPortfolio(portfolioId: string): Promise<Trade[]> {
+    await this.ensureDb();
     return await db.select().from(trades).where(eq(trades.portfolioId, portfolioId)).orderBy(desc(trades.executedAt));
   }
 
   async getTradesByBacktest(backtestId: string): Promise<Trade[]> {
+    await this.ensureDb();
     return await db.select().from(trades).where(eq(trades.backtestId, backtestId)).orderBy(desc(trades.executedAt));
   }
 
   async createTrade(trade: InsertTrade): Promise<Trade> {
+    await this.ensureDb();
     const [created] = await db.insert(trades).values(trade).returning();
     return created;
   }
 
   // Paper trading session operations
   async getPaperTradingSession(id: string): Promise<PaperTradingSession | undefined> {
+    await this.ensureDb();
     const [session] = await db.select().from(paperTradingSessions).where(eq(paperTradingSessions.id, id));
     return session || undefined;
   }
 
   async getActivePaperTradingSessions(): Promise<PaperTradingSession[]> {
+    await this.ensureDb();
     return await db.select().from(paperTradingSessions).where(eq(paperTradingSessions.status, "active")).orderBy(desc(paperTradingSessions.startedAt));
   }
 
   async createPaperTradingSession(session: InsertPaperTradingSession): Promise<PaperTradingSession> {
+    await this.ensureDb();
     const [created] = await db.insert(paperTradingSessions).values(session).returning();
     return created;
   }
 
   async updatePaperTradingSession(id: string, updates: Partial<PaperTradingSession>): Promise<PaperTradingSession | undefined> {
+    await this.ensureDb();
     const [updated] = await db.update(paperTradingSessions).set(updates).where(eq(paperTradingSessions.id, id)).returning();
     return updated || undefined;
   }
 
   // Settings operations
   async getSettings(userId: string): Promise<Settings | undefined> {
+    await this.ensureDb();
     const [setting] = await db.select().from(settings).where(eq(settings.userId, userId));
     return setting || undefined;
   }
