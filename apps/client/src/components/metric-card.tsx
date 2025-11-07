@@ -38,21 +38,25 @@ export function MetricCard({
 
   return (
     <Card 
-      className="transition-transform hover:scale-[1.02] duration-200 min-h-32"
+      className="transition-all hover:scale-[1.02] hover:shadow-lg duration-300 ease-in-out min-h-32 group"
       data-testid={testId || `card-metric-${label.toLowerCase().replace(/\s+/g, '-')}`}
     >
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
           {label}
         </CardTitle>
-        {Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
+        {Icon && (
+          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors duration-300">
+            <Icon className="h-5 w-5 text-primary" />
+          </div>
+        )}
       </CardHeader>
       <CardContent>
-        <div className="text-3xl font-mono font-bold tracking-tight" data-testid={`text-value-${testId || label}`}>
+        <div className="text-3xl font-mono font-bold tracking-tight animate-in fade-in duration-500" data-testid={`text-value-${testId || label}`}>
           {value}
         </div>
         {(change !== undefined || changeLabel) && (
-          <div className={`flex items-center gap-1 text-sm mt-2 ${trendColor}`}>
+          <div className={`flex items-center gap-1 text-sm mt-2 ${trendColor} animate-in slide-in-from-bottom-2 duration-500`}>
             <TrendIcon className="h-3 w-3" />
             <span data-testid={`text-change-${testId || label}`}>
               {change !== undefined && `${change > 0 ? '+' : ''}${change.toFixed(2)}%`}

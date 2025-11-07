@@ -27,11 +27,16 @@ export function ChartCard({
   };
 
   return (
-    <Card data-testid={testId || `card-chart-${title.toLowerCase().replace(/\s+/g, '-')}`}>
+    <Card 
+      className="transition-all hover:shadow-md duration-300"
+      data-testid={testId || `card-chart-${title.toLowerCase().replace(/\s+/g, '-')}`}
+    >
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 flex-wrap gap-2">
-        <CardTitle className="text-xl font-semibold">{title}</CardTitle>
+        <CardTitle className="text-xl font-semibold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
+          {title}
+        </CardTitle>
         {timeframes.length > 0 && (
-          <div className="flex gap-1" data-testid="timeframe-selector">
+          <div className="flex gap-1 flex-wrap" data-testid="timeframe-selector">
             {timeframes.map((timeframe) => (
               <Button
                 key={timeframe}
@@ -39,7 +44,7 @@ export function ChartCard({
                 size="sm"
                 onClick={() => handleTimeframeChange(timeframe)}
                 data-testid={`button-timeframe-${timeframe.toLowerCase()}`}
-                className="h-8 px-3"
+                className="h-8 px-3 transition-all duration-200"
               >
                 {timeframe}
               </Button>
@@ -47,11 +52,11 @@ export function ChartCard({
           </div>
         )}
       </CardHeader>
-      <CardContent className="p-4 min-h-80">
+      <CardContent className="p-4 min-h-80 animate-in fade-in duration-700">
         {children}
       </CardContent>
       {footer && (
-        <CardFooter className="text-sm text-muted-foreground border-t pt-4">
+        <CardFooter className="text-sm text-muted-foreground border-t pt-4 bg-muted/30">
           {footer}
         </CardFooter>
       )}
