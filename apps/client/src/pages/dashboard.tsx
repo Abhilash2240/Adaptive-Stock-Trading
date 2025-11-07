@@ -27,18 +27,19 @@ const lossData = [
 
 export default function Dashboard() {
   return (
-    <div className="space-y-8" data-testid="page-dashboard">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight" data-testid="text-page-title">
+    <div className="space-y-8 animate-in fade-in duration-700" data-testid="page-dashboard">
+      <div className="animate-in slide-in-from-top-4 duration-500">
+        <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-primary via-primary/80 to-primary/60 bg-clip-text text-transparent" data-testid="text-page-title">
           Dashboard
         </h1>
-        <p className="text-muted-foreground mt-1" data-testid="text-page-subtitle">
+        <p className="text-muted-foreground mt-2 text-lg" data-testid="text-page-subtitle">
           Real-time overview of your RL trading performance
         </p>
       </div>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-in slide-in-from-bottom-6 duration-700"
+           style={{ animationDelay: "150ms" }}>
         <MetricCard
           label="Portfolio Value"
           value="$115,800"
@@ -74,14 +75,15 @@ export default function Dashboard() {
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in slide-in-from-bottom-6 duration-700"
+           style={{ animationDelay: "300ms" }}>
         <ChartCard
           title="Portfolio Performance vs SPY"
           footer={
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-primary rounded-full" />
-                <span>RL Portfolio: +15.8%</span>
+                <div className="w-3 h-3 bg-primary rounded-full animate-pulse" />
+                <span className="font-semibold">RL Portfolio: +15.8%</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-chart-2 rounded-full" />
@@ -164,23 +166,32 @@ export default function Dashboard() {
       </div>
 
       {/* Activity Overview */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card data-testid="card-active-positions">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in slide-in-from-bottom-6 duration-700"
+           style={{ animationDelay: "450ms" }}>
+        <Card className="transition-all hover:shadow-md duration-300" data-testid="card-active-positions">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
-              Active Positions
+              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <BarChart3 className="h-5 w-5 text-primary" />
+              </div>
+              <span>Active Positions</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {["AAPL", "MSFT", "GOOGL", "NVDA", "TSLA"].map((ticker, idx) => (
-              <div key={ticker} className="flex items-center justify-between">
+              <div key={ticker} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors duration-200">
                 <div className="flex items-center gap-3">
                   <div className="font-mono font-bold text-lg">{ticker}</div>
-                  <Badge variant="secondary">{["BUY 10%", "HOLD", "BUY 5%", "SELL 5%", "HOLD"][idx]}</Badge>
+                  <Badge variant="secondary" className="transition-all hover:scale-105">
+                    {["BUY 10%", "HOLD", "BUY 5%", "SELL 5%", "HOLD"][idx]}
+                  </Badge>
                 </div>
                 <div className="text-right">
-                  <div className="font-mono font-semibold text-sm">
+                  <div className={`font-mono font-semibold text-sm ${
+                    ["+8.2%", "+3.5%", "+12.1%", "+5.8%", "-2.1%"][idx].startsWith('+') 
+                      ? 'text-green-600 dark:text-green-400' 
+                      : 'text-red-600 dark:text-red-400'
+                  }`}>
                     {["+8.2%", "+3.5%", "+12.1%", "+5.8%", "-2.1%"][idx]}
                   </div>
                   <div className="text-xs text-muted-foreground">
@@ -192,42 +203,44 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card data-testid="card-training-status">
+        <Card className="transition-all hover:shadow-md duration-300" data-testid="card-training-status">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Zap className="h-5 w-5" />
-              Current Training Job
+              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Zap className="h-5 w-5 text-primary animate-pulse" />
+              </div>
+              <span>Current Training Job</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Episode 1,842 / 3,000</span>
-                <span className="font-mono">61.4%</span>
+                <span className="font-mono font-semibold">61.4%</span>
               </div>
-              <Progress value={61.4} className="h-2" data-testid="progress-training" />
+              <Progress value={61.4} className="h-2 transition-all" data-testid="progress-training" />
             </div>
             
             <div className="grid grid-cols-2 gap-4 pt-2">
-              <div>
+              <div className="p-3 rounded-lg bg-muted/30 transition-all hover:bg-muted/50 duration-200">
                 <div className="text-xs text-muted-foreground">Current Loss</div>
                 <div className="font-mono text-lg font-semibold">0.2847</div>
               </div>
-              <div>
+              <div className="p-3 rounded-lg bg-muted/30 transition-all hover:bg-muted/50 duration-200">
                 <div className="text-xs text-muted-foreground">Epsilon</div>
                 <div className="font-mono text-lg font-semibold">0.125</div>
               </div>
-              <div>
+              <div className="p-3 rounded-lg bg-muted/30 transition-all hover:bg-muted/50 duration-200">
                 <div className="text-xs text-muted-foreground">Replay Buffer</div>
                 <div className="font-mono text-sm">842k / 1M</div>
               </div>
-              <div>
+              <div className="p-3 rounded-lg bg-muted/30 transition-all hover:bg-muted/50 duration-200">
                 <div className="text-xs text-muted-foreground">Est. Time Left</div>
                 <div className="font-mono text-sm">2h 18m</div>
               </div>
             </div>
 
-            <Badge variant="default" className="w-full justify-center">
+            <Badge variant="default" className="w-full justify-center animate-pulse">
               Training in Progress
             </Badge>
           </CardContent>

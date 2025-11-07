@@ -123,20 +123,20 @@ function AppContent() {
       <AppSidebar />
       <div className="flex flex-col flex-1">
         <header 
-          className="flex items-center justify-between h-16 px-6 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40"
+          className="flex items-center justify-between h-16 px-4 sm:px-6 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40 shadow-sm"
           data-testid="header-main"
         >
-          <div className="flex items-center gap-4">
-            <SidebarTrigger data-testid="button-sidebar-toggle" />
+          <div className="flex items-center gap-3 sm:gap-4">
+            <SidebarTrigger data-testid="button-sidebar-toggle" className="transition-transform hover:scale-110 duration-200" />
             <TradingModeBadge mode={tradingMode as "paper" | "live"} />
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
             <WebSocketStatus status={status} latency={latency} lastMessage={lastMessage} />
             <ThemeToggle />
           </div>
         </header>
         <main className="flex-1 overflow-auto pb-20">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
             <Router />
           </div>
         </main>
