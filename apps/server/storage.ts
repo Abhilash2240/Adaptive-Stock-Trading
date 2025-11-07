@@ -289,6 +289,7 @@ class DatabaseStorage implements IStorage {
   }
 
   async createOrUpdateSettings(insertSettings: InsertSettings): Promise<Settings> {
+    await this.ensureDb();
     const existing = await this.getSettings(insertSettings.userId);
     
     if (existing) {
