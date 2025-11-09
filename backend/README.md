@@ -2,7 +2,9 @@
 
 This directory hosts the redesigned Python backend. Install dependencies via Poetry (`poetry install`) or uv, then run `python -m backend.main` to launch the FastAPI service. The default configuration uses the mock data provider until real API keys are supplied.
 
-Prefer to orchestrate everything from the repo root? Activate your virtual environment, run `npm install` once, and then use `npm run dev:full` to start backend and frontend together (under the hood it executes `python -m backend.main` alongside Vite). A PowerShell helper is available at `scripts/start.ps1` if you want the processes in separate terminals.
+Prefer to orchestrate everything from the repo root? Activate your virtual environment, run `npm install` once, and then use `npm run dev:full` to start backend and frontend together (under the hood it executes `python -m backend.main` alongside Vite). A PowerShell helper is available at `scripts/start.ps1` if you want the processes in separate terminals. The one-shot setup script at `scripts/setup.ps1` can bootstrap `.venv`, install Python requirements, and install npm dependencies.
+
+Copy `backend/.env.example` to `backend/.env` and tweak values before running in anything other than the default mock configuration.
 
 ## Configuration
 

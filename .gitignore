@@ -14,3 +14,6 @@ vite.config.ts.*
 reports/
 stats/
 .lighthouseci/
+!.env.example
+!backend/.env.example
+!apps/client/.env.example
