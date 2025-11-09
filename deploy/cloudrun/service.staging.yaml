@@ -1,0 +1,57 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: stocktrade-backend-staging
+  labels:
+    app: stocktrade-backend
+    environment: staging
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "3"
+        run.googleapis.com/cpu-throttling: "false"
+    spec:
+      containerConcurrency: 80
+      containers:
+        - image: gcr.io/YOUR_GCP_PROJECT/stocktrade-backend:latest
+          command: ["python", "-m", "backend.main"]
+          env:
+            - name: ENVIRONMENT
+              value: staging
+            - name: DATA_PROVIDER
+              value: polygon
+            - name: SYMBOLS
+              value: AAPL,MSFT,TSLA
+            - name: MOCK_STREAM_INTERVAL
+              value: "1.0"
+            - name: POLYGON_POLL_INTERVAL
+              value: "1.0"
+            - name: POLYGON_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: polygon-api-key-staging
+                  key: latest
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-url-staging
+                  key: latest
+            - name: FIREBASE_PROJECT_ID
+              value: stocktrade-staging
+            - name: FIREBASE_AUTH_AUDIENCE
+              value: https://stocktrade-staging.firebaseapp.com
+            - name: PUBSUB_TOPIC
+              value: projects/your-gcp-project/topics/stocktrade-staging
+            - name: MODEL_BUCKET
+              value: gs://stocktrade-models-staging
+            - name: AGENT_MODEL_NAME
+              value: ppo-default
+            - name: REDIS_URL
+              value: redis://staging-redis-host:6379/0
+            - name: PORT
+              value: "8080"
+          ports:
+            - containerPort: 8080
+      serviceAccountName: stocktrade-deployer

@@ -1,221 +1,156 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { Portfolio, Model, Backtest, TrainingJob, PaperTradingSession, Settings } from "@shared/schema";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-// Portfolio hooks
-export function usePortfolios(userId: string) {
-  return useQuery<Portfolio[]>({
-    queryKey: ["/api/portfolios", { userId }],
-    queryFn: async () => {
-      const res = await fetch(`/api/portfolios?userId=${userId}`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    enabled: !!userId,
-  });
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+
+function resolveUrl(path: string): string {
+	if (path.startsWith("http://") || path.startsWith("https://")) {
+		return path;
+	}
+	if (!API_BASE) {
+		return path;
+	}
+	return `${API_BASE}${path}`;
 }
 
-export function usePortfolio(id: string) {
-  return useQuery<Portfolio>({
-    queryKey: [`/api/portfolios/${id}`],
-    enabled: !!id,
-  });
+async function request(path: string, init: RequestInit = {}): Promise<Response> {
+	const response = await fetch(resolveUrl(path), {
+		credentials: "include",
+		...init,
+		headers: {
+			Accept: "application/json",
+			...(init.headers ?? {}),
+		},
+	});
+
+	if (!response.ok) {
+		const message = (await response.text()) || `Request failed with status ${response.status}`;
+		throw new Error(message);
+	}
+
+	return response;
 }
 
-export function useCreatePortfolio() {
-  return useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", "/api/portfolios", data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/portfolios"] });
-    },
-  });
+async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+	const response = await request(path, init);
+	if (response.status === 204) {
+		return undefined as unknown as T;
+	}
+	return (await response.json()) as T;
 }
 
-// Model hooks
-export function useModels() {
-  return useQuery<Model[]>({
-    queryKey: ["/api/models"],
-  });
+export interface BackendReadyResponse {
+	status: string;
+	summary: {
+		environment: string;
+		provider: string;
+	};
 }
 
-export function useModel(id: string) {
-  return useQuery<Model>({
-    queryKey: [`/api/models/${id}`],
-    enabled: !!id,
-  });
+export interface BackendLiveResponse {
+	status: string;
 }
 
-export function useCreateModel() {
-  return useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", "/api/models", data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/models"] });
-    },
-  });
+export interface AgentStatusResponse {
+	state: string;
+	model_version: string;
+	updated_at: string;
 }
 
-// Backtest hooks
-export function useBacktests() {
-  return useQuery<Backtest[]>({
-    queryKey: ["/api/backtests"],
-  });
+export interface StreamSubscribePayload {
+	symbol: string;
+	channel?: "quotes" | "trades";
 }
 
-export function useBacktest(id: string) {
-  return useQuery<Backtest>({
-    queryKey: [`/api/backtests/${id}`],
-    enabled: !!id,
-  });
+export interface UserSettingsResponse {
+	userId: string;
+	tradingMode: "paper" | "live";
+	marketDataProvider: string;
+	geminiEnabled: boolean;
+	notificationsEnabled: boolean;
 }
 
-export function useCreateBacktest() {
-  return useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", "/api/backtests", data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/backtests"] });
-    },
-  });
+export interface SaveSettingsPayload extends Partial<UserSettingsResponse> {
+	userId: string;
 }
 
-// Training job hooks
-export function useTrainingJob(id: string) {
-  return useQuery<TrainingJob>({
-    queryKey: [`/api/training/${id}`],
-    enabled: !!id,
-    refetchInterval: 2000, // Poll every 2 seconds for active jobs
-  });
+export const apiBaseUrl = API_BASE;
+
+export function resolveWebSocketUrl(): string {
+	const envUrl = (import.meta.env as any).VITE_WS_URL as string | undefined;
+	if (envUrl) {
+		return envUrl;
+	}
+	if (typeof window !== "undefined") {
+		const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+		return `${protocol}//${window.location.host}/ws/quotes`;
+	}
+	return "ws://localhost:8080/ws/quotes";
 }
 
-export function useStartTraining() {
-  return useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", "/api/training", data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/training"] });
-    },
-  });
+export function useBackendReady() {
+	return useQuery<BackendReadyResponse>({
+		queryKey: ["backend-ready"],
+		queryFn: () => requestJson<BackendReadyResponse>("/health/ready"),
+		refetchInterval: 15000,
+		staleTime: 15000,
+	});
 }
 
-export function useUpdateTrainingJob() {
-  return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => {
-      const res = await apiRequest("PATCH", `/api/training/${id}`, data);
-      return res.json();
-    },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: [`/api/training/${variables.id}`] });
-    },
-  });
+export function useBackendLive() {
+	return useQuery<BackendLiveResponse>({
+		queryKey: ["backend-live"],
+		queryFn: () => requestJson<BackendLiveResponse>("/health/live"),
+		refetchInterval: 30000,
+		staleTime: 30000,
+	});
 }
 
-// Paper trading hooks
-export function useActivePaperTradingSessions() {
-  return useQuery<PaperTradingSession[]>({
-    queryKey: ["/api/paper-trading/active"],
-    refetchInterval: 5000, // Poll every 5 seconds
-  });
+export function useAgentStatus() {
+	return useQuery<AgentStatusResponse>({
+		queryKey: ["agent-status"],
+		queryFn: () => requestJson<AgentStatusResponse>("/agent/status"),
+		refetchInterval: 4000,
+	});
 }
 
-export function usePaperTradingSession(id: string) {
-  return useQuery<PaperTradingSession>({
-    queryKey: [`/api/paper-trading/${id}`],
-    enabled: !!id,
-    refetchInterval: 2000,
-  });
+export function useSubscribeToStream() {
+	return useMutation({
+		mutationFn: async ({ symbol, channel = "quotes" }: StreamSubscribePayload) => {
+			await request("/stream", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ symbol, channel }),
+			});
+		},
+	});
 }
 
-export function useStartPaperTrading() {
-  return useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", "/api/paper-trading", data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/paper-trading"] });
-    },
-  });
-}
-
-export function useUpdatePaperTrading() {
-  return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => {
-      const res = await apiRequest("PATCH", `/api/paper-trading/${id}`, data);
-      return res.json();
-    },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: [`/api/paper-trading/${variables.id}`] });
-    },
-  });
-}
-
-// Settings hooks
 export function useSettings(userId: string) {
-  return useQuery<Settings>({
-    queryKey: ["/api/settings", { userId }],
-    queryFn: async () => {
-      const res = await fetch(`/api/settings?userId=${userId}`, {
-        credentials: "include",
-      });
-      if (res.status === 404) {
-        // Return default settings if not found
-        return {
-          id: "",
-          userId,
-          tradingMode: "paper",
-          marketDataProvider: "yfinance",
-          geminiEnabled: true,
-          notificationsEnabled: true,
-          updatedAt: new Date(),
-        } as Settings;
-      }
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    enabled: !!userId,
-  });
+	return useQuery<UserSettingsResponse>({
+		queryKey: ["settings", userId],
+		enabled: Boolean(userId),
+		queryFn: () => requestJson<UserSettingsResponse>(`/settings?userId=${encodeURIComponent(userId)}`),
+		staleTime: 60_000,
+	});
 }
 
 export function useSaveSettings() {
-  return useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", "/api/settings", data);
-      return res.json();
-    },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/settings", { userId: variables.userId }] });
-    },
-  });
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: async (payload: SaveSettingsPayload) => {
+			return requestJson<UserSettingsResponse>("/settings", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(payload),
+			});
+		},
+		onSuccess: (data) => {
+			queryClient.setQueryData(["settings", data.userId], data);
+		},
+	});
 }
 
-// Sentiment analysis hook
-export function useAnalyzeSentiment() {
-  return useMutation({
-    mutationFn: async (data: { ticker: string; text: string }) => {
-      const res = await apiRequest("POST", "/api/sentiment", data);
-      return res.json();
-    },
-  });
-}
-
-// Agent decision hook
-export function useAgentStep() {
-  return useMutation({
-    mutationFn: async (data: { ticker: string; state: any }) => {
-      const res = await apiRequest("POST", "/api/agent/step", data);
-      return res.json();
-    },
-  });
-}

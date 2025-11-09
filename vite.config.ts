@@ -3,42 +3,49 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
-export default defineConfig({
-  plugins: [
-    react(),
-    runtimeErrorOverlay(),
-    ...(process.env.NODE_ENV !== "production" &&
-    process.env.REPL_ID !== undefined
-      ? [
-          await import("@replit/vite-plugin-cartographer").then((m) =>
-            m.cartographer(),
-          ),
-          await import("@replit/vite-plugin-dev-banner").then((m) =>
-            m.devBanner(),
-          ),
-        ]
-      : []),
-  ],
-  resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "apps", "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "packages", "shared", "src"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+export default defineConfig(async () => {
+  const plugins = [react(), runtimeErrorOverlay()];
+
+  if (process.env.NODE_ENV !== "production" && process.env.REPL_ID !== undefined) {
+    const [{ cartographer }, { devBanner }] = await Promise.all([
+      import("@replit/vite-plugin-cartographer"),
+      import("@replit/vite-plugin-dev-banner"),
+    ]);
+    plugins.push(cartographer(), devBanner());
+  }
+
+  if (process.env.ANALYZE === "true") {
+    const { visualizer } = await import("rollup-plugin-visualizer");
+    plugins.push(
+      visualizer({
+        filename: "stats/bundle-report.html",
+        template: "treemap",
+        gzipSize: true,
+        brotliSize: true,
+      }),
+    );
+  }
+
+  const rootDir = path.resolve(import.meta.dirname, "apps", "client");
+
+  return {
+    plugins,
+    resolve: {
+      alias: {
+        "@": path.resolve(rootDir, "src"),
+      },
     },
-  },
-  root: path.resolve(import.meta.dirname, "apps", "client"),
-  base: process.env.PAGES_BUILD === "1" ? "/Adaptive-Stock-Trading/" : "/",
-  build: {
-    outDir:
-      process.env.PAGES_BUILD === "1"
-        ? path.resolve(import.meta.dirname, "apps", "client", "dist")
-        : path.resolve(import.meta.dirname, "apps", "server", "dist", "public"),
-    emptyOutDir: true,
-  },
-  server: {
-    fs: {
-      strict: true,
-      deny: ["**/.*"],
+    root: rootDir,
+    base: process.env.PAGES_BUILD === "1" ? "/Adaptive-Stock-Trading/" : "/",
+    build: {
+      outDir: path.resolve(rootDir, "dist"),
+      emptyOutDir: true,
     },
-  },
+    server: {
+      fs: {
+        strict: true,
+        deny: ["**/.*"],
+      },
+    },
+  };
 });

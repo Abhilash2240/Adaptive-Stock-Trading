@@ -1,0 +1,62 @@
+{
+  "hosting": [
+    {
+      "site": "stocktrade-staging",
+      "public": "apps/client/dist",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "/api/**",
+          "run": {
+            "serviceId": "stocktrade-backend-staging",
+            "region": "us-central1"
+          }
+        },
+        {
+          "source": "/ws/**",
+          "run": {
+            "serviceId": "stocktrade-backend-staging",
+            "region": "us-central1"
+          }
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    {
+      "site": "stocktrade-production",
+      "public": "apps/client/dist",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "/api/**",
+          "run": {
+            "serviceId": "stocktrade-backend-production",
+            "region": "us-central1"
+          }
+        },
+        {
+          "source": "/ws/**",
+          "run": {
+            "serviceId": "stocktrade-backend-production",
+            "region": "us-central1"
+          }
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  ]
+}

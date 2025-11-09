@@ -1,238 +1,368 @@
+import { useEffect, useMemo, useState } from "react";
+import { Activity, Database, LineChart as LineChartIcon, RefreshCw, Wifi } from "lucide-react";
+import {
+	LineChart,
+	Line,
+	XAxis,
+	YAxis,
+	CartesianGrid,
+	Tooltip,
+	ResponsiveContainer,
+} from "recharts";
+
+import { useQuoteStreamContext } from "@/context/quote-stream-context";
+import { useAgentStatus, useBackendReady } from "@/hooks/use-api";
+import { useToast } from "@/hooks/use-toast";
 import { MetricCard } from "@/components/metric-card";
-import { ChartCard } from "@/components/chart-card";
-import { DollarSign, TrendingUp, Activity, Target, BarChart3, Zap } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Area, AreaChart } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-
-// Mock data for charts
-const portfolioData = [
-  { date: "Jan", value: 100000, spy: 100000 },
-  { date: "Feb", value: 102500, spy: 101000 },
-  { date: "Mar", value: 105800, spy: 102500 },
-  { date: "Apr", value: 108200, spy: 103800 },
-  { date: "May", value: 112500, spy: 105200 },
-  { date: "Jun", value: 115800, spy: 106500 },
-];
-
-const lossData = [
-  { episode: 0, loss: 0.85 },
-  { episode: 500, loss: 0.62 },
-  { episode: 1000, loss: 0.48 },
-  { episode: 1500, loss: 0.35 },
-  { episode: 2000, loss: 0.28 },
-  { episode: 2500, loss: 0.22 },
-];
+import { Input } from "@/components/ui/input";
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@/components/ui/table";
+import { formatPrice, formatRelativeTime, titleCase } from "@/utils/formatters";
 
 export default function Dashboard() {
-  return (
-    <div className="space-y-8" data-testid="page-dashboard">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight" data-testid="text-page-title">
-          Dashboard
-        </h1>
-        <p className="text-muted-foreground mt-1" data-testid="text-page-subtitle">
-          Real-time overview of your RL trading performance
-        </p>
-      </div>
+	const { toast } = useToast();
+	const {
+		quotes,
+		history,
+		status: connectionStatus,
+		latency,
+		lastMessageAt,
+		subscribe,
+		isSubscribing,
+	} = useQuoteStreamContext();
+	const { data: backendReady } = useBackendReady();
+	const {
+		data: agentStatus,
+		refetch: refetchAgent,
+		isFetching: isAgentRefreshing,
+		isLoading: isAgentLoading,
+	} = useAgentStatus();
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard
-          label="Portfolio Value"
-          value="$115,800"
-          change={15.8}
-          changeLabel="vs initial"
-          icon={DollarSign}
-          trend="up"
-        />
-        <MetricCard
-          label="Total Return"
-          value="+15.8%"
-          change={3.2}
-          changeLabel="this month"
-          icon={TrendingUp}
-          trend="up"
-        />
-        <MetricCard
-          label="Sharpe Ratio"
-          value="1.85"
-          change={0.15}
-          changeLabel="vs benchmark"
-          icon={Activity}
-          trend="up"
-        />
-        <MetricCard
-          label="Max Drawdown"
-          value="-4.2%"
-          change={-1.1}
-          changeLabel="improved"
-          icon={Target}
-          trend="up"
-        />
-      </div>
+	const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+	const [symbolInput, setSymbolInput] = useState("");
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ChartCard
-          title="Portfolio Performance vs SPY"
-          footer={
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-primary rounded-full" />
-                <span>RL Portfolio: +15.8%</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-chart-2 rounded-full" />
-                <span>SPY Benchmark: +6.5%</span>
-              </div>
-            </div>
-          }
-        >
-          <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={portfolioData}>
-              <defs>
-                <linearGradient id="colorPortfolio" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
-                </linearGradient>
-                <linearGradient id="colorSpy" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--chart-2))" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="hsl(var(--chart-2))" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
-              <XAxis dataKey="date" fontSize={12} />
-              <YAxis fontSize={12} tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "hsl(var(--popover))",
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: "6px",
-                }}
-                formatter={(value: number) => `$${value.toLocaleString()}`}
-              />
-              <Legend />
-              <Area
-                type="monotone"
-                dataKey="value"
-                stroke="hsl(var(--primary))"
-                fillOpacity={1}
-                fill="url(#colorPortfolio)"
-                name="RL Portfolio"
-              />
-              <Area
-                type="monotone"
-                dataKey="spy"
-                stroke="hsl(var(--chart-2))"
-                fillOpacity={1}
-                fill="url(#colorSpy)"
-                name="SPY"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </ChartCard>
+	useEffect(() => {
+		if (!selectedSymbol && quotes.length > 0) {
+			setSelectedSymbol(quotes[0].symbol);
+		}
+	}, [quotes, selectedSymbol]);
 
-        <ChartCard
-          title="Training Loss Curve"
-          footer="Latest model: Double DQN v2.3 • Trained 6h ago"
-        >
-          <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={lossData}>
-              <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
-              <XAxis dataKey="episode" fontSize={12} />
-              <YAxis fontSize={12} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "hsl(var(--popover))",
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: "6px",
-                }}
-              />
-              <Line
-                type="monotone"
-                dataKey="loss"
-                stroke="hsl(var(--chart-3))"
-                strokeWidth={2}
-                dot={false}
-                name="Loss"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </ChartCard>
-      </div>
+	const selectedHistory = useMemo(() => {
+		if (!selectedSymbol) {
+			return [];
+		}
+		return history[selectedSymbol] ?? [];
+	}, [history, selectedSymbol]);
 
-      {/* Activity Overview */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card data-testid="card-active-positions">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
-              Active Positions
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {["AAPL", "MSFT", "GOOGL", "NVDA", "TSLA"].map((ticker, idx) => (
-              <div key={ticker} className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="font-mono font-bold text-lg">{ticker}</div>
-                  <Badge variant="secondary">{["BUY 10%", "HOLD", "BUY 5%", "SELL 5%", "HOLD"][idx]}</Badge>
-                </div>
-                <div className="text-right">
-                  <div className="font-mono font-semibold text-sm">
-                    {["+8.2%", "+3.5%", "+12.1%", "+5.8%", "-2.1%"][idx]}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Q: {[0.92, 0.65, 0.88, 0.71, 0.55][idx]}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+	const chartData = useMemo(
+		() =>
+			selectedHistory.map((item) => ({
+				time: new Date(item.timestamp).toLocaleTimeString([], {
+					hour: "2-digit",
+					minute: "2-digit",
+					second: "2-digit",
+				}),
+				price: item.price,
+			})),
+		[selectedHistory],
+	);
 
-        <Card data-testid="card-training-status">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Zap className="h-5 w-5" />
-              Current Training Job
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Episode 1,842 / 3,000</span>
-                <span className="font-mono">61.4%</span>
-              </div>
-              <Progress value={61.4} className="h-2" data-testid="progress-training" />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4 pt-2">
-              <div>
-                <div className="text-xs text-muted-foreground">Current Loss</div>
-                <div className="font-mono text-lg font-semibold">0.2847</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Epsilon</div>
-                <div className="font-mono text-lg font-semibold">0.125</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Replay Buffer</div>
-                <div className="font-mono text-sm">842k / 1M</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Est. Time Left</div>
-                <div className="font-mono text-sm">2h 18m</div>
-              </div>
-            </div>
+	const currentQuote = useMemo(() => {
+		if (!selectedSymbol) {
+			return undefined;
+		}
+		return quotes.find((quote) => quote.symbol === selectedSymbol);
+	}, [quotes, selectedSymbol]);
 
-            <Badge variant="default" className="w-full justify-center">
-              Training in Progress
-            </Badge>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
+	const providerName = backendReady?.summary?.provider ?? "mock";
+	const environment = backendReady?.summary?.environment ?? "development";
+		const agentState = titleCase(agentStatus?.state ?? "idle");
+	const agentModel = agentStatus?.model_version ?? "unknown";
+	const agentUpdatedAt = agentStatus?.updated_at ?? null;
+
+	const connectionTrend = connectionStatus === "connected" ? "up" : connectionStatus === "reconnecting" ? "neutral" : "down";
+	const latencyTrend = latency !== null && latency <= 150 ? "up" : latency !== null ? "down" : "neutral";
+	const agentTrend = agentStatus?.state === "running" ? "up" : agentStatus?.state === "error" ? "down" : "neutral";
+
+	const handleSubscribe = async (event: React.FormEvent<HTMLFormElement>) => {
+		event.preventDefault();
+		const trimmed = symbolInput.trim().toUpperCase();
+		if (!trimmed) {
+			return;
+		}
+		try {
+			await subscribe(trimmed);
+			toast({
+				title: `Subscribed to ${trimmed}`,
+				description: "The backend will stream quotes for this symbol as data becomes available.",
+			});
+			setSelectedSymbol(trimmed);
+			setSymbolInput("");
+		} catch (error) {
+			const description = error instanceof Error ? error.message : "Unable to subscribe to the requested symbol.";
+			toast({
+				title: "Subscription failed",
+				description,
+				variant: "destructive",
+			});
+		}
+	};
+
+	return (
+		<div className="space-y-8" data-testid="page-dashboard">
+			<div className="flex flex-col gap-2">
+				<h1 className="text-3xl font-bold tracking-tight" data-testid="text-page-title">
+					Live Trading Overview
+				</h1>
+				<p className="text-muted-foreground" data-testid="text-page-subtitle">
+					Monitor streaming market data, backend health, and agent readiness in real time.
+				</p>
+			</div>
+
+			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+				<MetricCard
+					label="Connection"
+					value={connectionStatus.toUpperCase()}
+					icon={Wifi}
+					trend={connectionTrend}
+					testId="metric-connection"
+				/>
+				<MetricCard
+					label="Latency"
+					value={latency !== null ? `${Math.max(0, Math.round(latency))} ms` : "—"}
+					icon={LineChartIcon}
+					trend={latencyTrend}
+					changeLabel={latency !== null ? "avg message delay" : undefined}
+					testId="metric-latency"
+				/>
+				<MetricCard
+					label="Agent State"
+					value={agentState}
+					icon={Activity}
+					trend={agentTrend}
+					changeLabel={`Model ${agentModel}`}
+					testId="metric-agent"
+				/>
+				<MetricCard
+					label="Data Provider"
+					value={providerName.toUpperCase()}
+					icon={Database}
+					trend="neutral"
+					changeLabel={environment.toUpperCase()}
+					testId="metric-provider"
+				/>
+			</div>
+
+			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+				<Card className="lg:col-span-2">
+					<CardHeader className="flex flex-row items-center justify-between gap-4">
+						<div>
+							<CardTitle className="text-xl font-semibold">Price Stream</CardTitle>
+							<p className="text-sm text-muted-foreground">
+								{selectedSymbol ? `Last ${selectedHistory.length} ticks for ${selectedSymbol}` : "Select a symbol to view recent price action."}
+							</p>
+						</div>
+						{selectedSymbol && (
+							<Badge variant="outline" className="font-mono px-3 py-1 text-sm">
+								{selectedSymbol}
+							</Badge>
+						)}
+					</CardHeader>
+					<CardContent className="h-[320px]">
+						{chartData.length > 1 ? (
+							<ResponsiveContainer width="100%" height="100%">
+								<LineChart data={chartData}>
+									<CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+									<XAxis dataKey="time" tick={{ fontSize: 12 }} minTickGap={24} />
+									<YAxis tick={{ fontSize: 12 }} domain={["auto", "auto"]} />
+									<Tooltip
+										contentStyle={{
+											backgroundColor: "hsl(var(--popover))",
+											border: "1px solid hsl(var(--border))",
+											borderRadius: "0.5rem",
+										}}
+										formatter={(value: number) => `$${value.toFixed(2)}`}
+									/>
+									<Line type="monotone" dataKey="price" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+								</LineChart>
+							</ResponsiveContainer>
+						) : (
+							<div className="h-full flex flex-col items-center justify-center text-muted-foreground text-sm">
+								<p>No recent ticks for the selected symbol yet.</p>
+								<p className="mt-2">Stream activity will appear here once the backend publishes data.</p>
+							</div>
+						)}
+					</CardContent>
+				</Card>
+
+				<Card className="space-y-4">
+					<CardHeader className="space-y-2">
+						<CardTitle className="text-xl font-semibold">Controls</CardTitle>
+						<p className="text-sm text-muted-foreground">
+							Subscribe to additional symbols and inspect the agent heartbeat.
+						</p>
+					</CardHeader>
+					<CardContent className="space-y-6">
+						<form className="space-y-3" onSubmit={handleSubscribe}>
+							<label className="text-sm font-medium" htmlFor="symbol-input">
+								Subscribe to symbol
+							</label>
+							<div className="flex gap-2">
+								<Input
+									id="symbol-input"
+									placeholder="e.g. AAPL"
+									value={symbolInput}
+									onChange={(event) => setSymbolInput(event.target.value.toUpperCase())}
+									maxLength={8}
+									className="uppercase"
+									autoComplete="off"
+									data-testid="input-subscribe-symbol"
+								/>
+								<Button type="submit" disabled={isSubscribing} data-testid="button-subscribe">
+									{isSubscribing ? "Subscribing…" : "Subscribe"}
+								</Button>
+							</div>
+							<p className="text-xs text-muted-foreground">
+								Symbols must be enabled server-side. The mock provider streams {"AAPL"}, {"MSFT"}, and {"TSLA"} by default.
+							</p>
+						</form>
+
+						<div className="border rounded-lg p-4 space-y-3 bg-muted/50">
+							<div className="flex items-center justify-between">
+								<div>
+									<p className="text-sm font-semibold">Agent heartbeat</p>
+									<p className="text-xs text-muted-foreground">
+										Updated {formatRelativeTime(agentUpdatedAt)}
+									</p>
+								</div>
+								<Button
+									size="icon"
+									variant="outline"
+									onClick={() => refetchAgent()}
+									disabled={isAgentRefreshing}
+									data-testid="button-refresh-agent"
+								>
+									<RefreshCw className={`h-4 w-4 ${isAgentRefreshing ? "animate-spin" : ""}`} />
+								</Button>
+							</div>
+							<div className="grid grid-cols-2 gap-3 text-sm">
+								<div>
+									<p className="text-muted-foreground">State</p>
+									<p className="font-semibold">{agentState}</p>
+								</div>
+								<div>
+									<p className="text-muted-foreground">Model</p>
+									<p className="font-semibold">{agentModel}</p>
+								</div>
+								<div>
+									<p className="text-muted-foreground">Connection</p>
+									<p className="font-semibold">{connectionStatus}</p>
+								</div>
+								<div>
+									<p className="text-muted-foreground">Last socket event</p>
+									<p className="font-semibold">{formatRelativeTime(lastMessageAt)}</p>
+								</div>
+							</div>
+							{isAgentLoading && <p className="text-xs text-muted-foreground">Fetching agent status…</p>}
+						</div>
+
+						<div className="rounded-lg border p-4 bg-muted/40">
+							<p className="text-xs text-muted-foreground leading-relaxed">
+								Tip: Run the FastAPI backend locally with <code className="font-mono text-[11px]">python -m backend.main</code> and
+								configure <code className="font-mono text-[11px]">VITE_API_BASE</code> / <code className="font-mono text-[11px]">VITE_WS_URL</code> to connect from the client.
+							</p>
+						</div>
+					</CardContent>
+				</Card>
+			</div>
+
+			<Card>
+				<CardHeader className="flex flex-row items-center justify-between">
+					<div>
+						<CardTitle>Active Streams</CardTitle>
+						<p className="text-sm text-muted-foreground">
+							Latest tick per symbol. Click a row to focus the chart.
+						</p>
+					</div>
+					<Badge variant="outline" className="px-3 py-1 font-medium">
+						{quotes.length} symbols
+					</Badge>
+				</CardHeader>
+				<CardContent className="overflow-x-auto">
+					<Table>
+						<TableHeader>
+							<TableRow>
+								<TableHead>Symbol</TableHead>
+								<TableHead className="text-right">Last Price</TableHead>
+								<TableHead className="text-right">Δ (1 tick)</TableHead>
+								<TableHead className="text-right">Volume</TableHead>
+								<TableHead className="text-right">Updated</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{quotes.map((quote) => {
+								const rows = history[quote.symbol] ?? [];
+								const previousQuote = rows.length > 1 ? rows[rows.length - 2] : null;
+								const priceChange = previousQuote ? quote.price - previousQuote.price : null;
+								const priceChangePct = previousQuote && previousQuote.price !== 0 ? (priceChange! / previousQuote.price) * 100 : null;
+								const changeIsPositive = priceChange !== null && priceChange > 0;
+								const changeIsNegative = priceChange !== null && priceChange < 0;
+
+								return (
+									<TableRow
+										key={quote.symbol}
+										data-state={selectedSymbol === quote.symbol ? "selected" : undefined}
+										className="cursor-pointer"
+										onClick={() => setSelectedSymbol(quote.symbol)}
+										data-testid={`row-quote-${quote.symbol}`}
+									>
+										<TableCell>
+											<span className="font-mono font-semibold">{quote.symbol}</span>
+										</TableCell>
+										<TableCell className="text-right font-mono">{formatPrice(quote.price)}</TableCell>
+										<TableCell className="text-right">
+											{priceChange !== null ? (
+												<span
+													className={`font-mono text-sm ${
+														changeIsPositive ? "text-green-600 dark:text-green-400" : changeIsNegative ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
+													}`}
+												>
+													{priceChange > 0 ? "+" : ""}
+													{priceChange.toFixed(2)}
+													{priceChangePct !== null && ` (${priceChangePct > 0 ? "+" : ""}${priceChangePct.toFixed(2)}%)`}
+												</span>
+											) : (
+												<span className="text-muted-foreground">—</span>
+											)}
+										</TableCell>
+										<TableCell className="text-right font-mono text-sm">{quote.volume.toLocaleString()}</TableCell>
+										<TableCell className="text-right text-sm text-muted-foreground">
+											{formatRelativeTime(quote.timestamp)}
+										</TableCell>
+									</TableRow>
+								);
+							})}
+							{quotes.length === 0 && (
+								<TableRow>
+									<TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-10">
+										Waiting for the first quote from the backend…
+									</TableCell>
+								</TableRow>
+							)}
+						</TableBody>
+					</Table>
+				</CardContent>
+			</Card>
+		</div>
+	);
 }
+

@@ -1,103 +1,146 @@
 import React, { useEffect, useState } from "react";
 import { Switch, Route } from "wouter";
-import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
+
+import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AppSidebar } from "@/components/app-sidebar";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { WebSocketStatus } from "@/components/websocket-status";
 import { TradingModeBadge } from "@/components/trading-mode-badge";
-import { useWebSocket } from "@/hooks/use-websocket";
-import { useSettings } from "@/hooks/use-api";
-import NotFound from "@/pages/not-found";
+import { useQuoteStreamContext, QuoteStreamProvider } from "@/context/quote-stream-context";
+import { apiBaseUrl, useBackendReady } from "@/hooks/use-api";
 import Dashboard from "@/pages/dashboard";
+import Streams from "@/pages/streams";
+import Diagnostics from "@/pages/diagnostics";
 import Portfolio from "@/pages/portfolio";
 import Backtest from "@/pages/backtest";
 import Training from "@/pages/training";
 import PaperTrading from "@/pages/paper-trading";
 import Settings from "@/pages/settings";
 import Logs from "@/pages/logs";
+import NotFound from "@/pages/not-found";
 
 function useApiHealth() {
-  const api = import.meta.env.VITE_API_BASE;
-  const [status, setStatus] = useState<"ok"|"fail"|"checking">("checking");
+  const base = apiBaseUrl;
+  const target = `${base || ""}/health/ready`;
+  const [status, setStatus] = useState<"ok" | "fail" | "checking">("checking");
   const [error, setError] = useState<string>("");
+
   useEffect(() => {
-    if (!api) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      controller.abort();
       setStatus("fail");
-      setError("VITE_API_BASE is not set. API calls will not work from GitHub Pages.");
-      return;
-    }
-    let timeout = setTimeout(() => setStatus("fail"), 4500);
-    fetch(`${api}/api/quote?symbol=AAPL`) // any /api endpoint works
-      .then(r => r.ok ? r.json() : Promise.reject(r))
+      setError("Timed out while contacting the backend health endpoint.");
+    }, 5000);
+
+    fetch(target, { signal: controller.signal })
+      .then((response) => (response.ok ? response.json() : Promise.reject(response)))
       .then(() => {
-        clearTimeout(timeout);
+        window.clearTimeout(timeout);
         setStatus("ok");
         setError("");
       })
-      .catch(async (e) => {
+      .catch(async (reason) => {
+        if (controller.signal.aborted) {
+          return;
+        }
         setStatus("fail");
-        try {
-          setError((await e.text?.()) || "Backend API not reachable.");
-        } catch { setError("Backend API not reachable. Is it deployed?"); }
+        if (reason instanceof Response) {
+          const message = await reason.text();
+          setError(message || `Health endpoint returned status ${reason.status}.`);
+        } else {
+          setError("Backend API not reachable. Is it running and accessible from this host?");
+        }
+      })
+      .finally(() => {
+        window.clearTimeout(timeout);
       });
-    return () => timeout && clearTimeout(timeout);
-  }, [api]);
-  return { status, error };
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [target]);
+
+  return { status, error, target };
 }
 
-class ErrorBoundary extends React.Component<any, { hasError: boolean, error: Error|null }> {
-  constructor(props: any) {
+class ErrorBoundary extends React.Component<
+  React.PropsWithChildren,
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: React.PropsWithChildren) {
     super(props);
     this.state = { hasError: false, error: null };
   }
+
   static getDerivedStateFromError(error: Error) {
     return { hasError: true, error };
   }
-  componentDidCatch(error: Error) { this.setState({ hasError: true, error }); }
+
+  componentDidCatch(error: Error) {
+    this.setState({ hasError: true, error });
+  }
+
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ background: '#fdd', color: '#a00', padding: 16 }}>
-          <b>App Error:</b> {this.state.error?.message}
+        <div className="bg-red-100 text-red-800 border-b border-red-200 px-4 py-3 text-sm">
+          <span className="font-semibold">App Error:</span> {this.state.error?.message}
         </div>
       );
     }
+
     return this.props.children;
   }
 }
 
-const BASE = import.meta.env.BASE_URL || "/";
-
 function ApiBanner() {
-  const { status, error } = useApiHealth();
-  const api = import.meta.env.VITE_API_BASE;
-  if (status === "ok") return null;
+  const { status, error, target } = useApiHealth();
+
+  if (status === "ok") {
+    return null;
+  }
+
+  const message =
+    status === "checking"
+      ? "Checking backend connectivity…"
+      : error || "Backend API not reachable. Is it running?";
+
   return (
-    <div style={{ background: "#fee", color: "#900", padding: 12, borderBottom: "1px solid #fcc", textAlign: "center" }}>
-      <div><b>Warning.</b> Cannot reach backend API.</div>
-      {error && <div style={{ marginTop: 8 }}>{error}</div>}
-      {api && (
-        <div style={{ marginTop: 8 }}>
-          Check backend: <a style={{ color: '#07a' }} href={`${api}/api/quote?symbol=AAPL`} target="_blank" rel="noopener noreferrer">{api}</a>
-        </div>
+    <div className="bg-red-50 text-red-700 border-b border-red-100 px-4 py-3 text-sm text-center">
+      <p className="font-semibold">Backend connectivity warning</p>
+      <p className="mt-1">{message}</p>
+      {status === "fail" && target && (
+        <p className="mt-2 text-xs">
+          Attempted to reach {" "}
+          <a className="underline" href={target} target="_blank" rel="noopener noreferrer">
+            {target}
+          </a>
+          .
+        </p>
       )}
-      <div style={{ marginTop: 6, fontSize: '90%', opacity: 0.8 }}>
-        If you’re running on GitHub Pages, set <code>VITE_API_BASE</code> in your repo Actions → Variables to your backend URL (e.g., <code>https://yourapp.onrender.com</code>), and make sure backend is live.
-      </div>
+      {apiBaseUrl && (
+        <p className="mt-2 text-xs">
+          Using <code className="font-mono">{apiBaseUrl}</code> as the API base URL.
+        </p>
+      )}
     </div>
   );
 }
 
-function Router() {
+function AppRouter() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
+      <Route path="/streams" component={Streams} />
+      <Route path="/diagnostics" component={Diagnostics} />
       <Route path="/portfolio" component={Portfolio} />
       <Route path="/backtest" component={Backtest} />
       <Route path="/training" component={Training} />
@@ -110,37 +153,49 @@ function Router() {
 }
 
 function AppContent() {
-  const { status, lastMessage, latency } = useWebSocket();
-  
-  // For MVP, use a demo user ID (in production, this would come from auth)
-  const demoUserId = "demo-user-1";
-  const { data: userSettings } = useSettings(demoUserId);
-  
-  const tradingMode = userSettings?.tradingMode || "paper";
+  const { status, latency, lastMessageAt } = useQuoteStreamContext();
+  const {
+    data: backendReady,
+    isLoading: isBackendLoading,
+    isError: isBackendError,
+    error: backendError,
+  } = useBackendReady();
+
+  const provider = backendReady?.summary?.provider ?? "unknown";
+  const environment = backendReady?.summary?.environment ?? "development";
+
+  let backendStatusText = `${provider} • ${environment}`;
+  if (isBackendLoading) {
+    backendStatusText = "Checking backend…";
+  } else if (isBackendError) {
+    backendStatusText = backendError instanceof Error ? backendError.message : "Backend offline";
+  }
 
   return (
-    <div className="flex h-screen w-full">
+    <div className="flex min-h-screen w-full bg-background text-foreground">
       <AppSidebar />
-      <div className="flex flex-col flex-1">
-        <header 
-          className="flex items-center justify-between h-16 px-6 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40"
-          data-testid="header-main"
-        >
-          <div className="flex items-center gap-4">
-            <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <TradingModeBadge mode={tradingMode as "paper" | "live"} />
+      <SidebarInset>
+        <header className="flex h-16 items-center justify-between border-b px-4 lg:px-6">
+          <div className="flex items-center gap-3">
+            <SidebarTrigger className="md:hidden" />
+            <div className="flex items-center gap-2">
+              <TradingModeBadge mode="paper" />
+              <span className="hidden text-sm text-muted-foreground sm:inline">{backendStatusText}</span>
+            </div>
           </div>
-          <div className="flex items-center gap-4">
-            <WebSocketStatus status={status} latency={latency} lastMessage={lastMessage} />
+          <div className="flex items-center gap-3">
+            <WebSocketStatus
+              status={status}
+              latency={latency ?? undefined}
+              lastMessage={lastMessageAt ?? undefined}
+            />
             <ThemeToggle />
           </div>
         </header>
-        <main className="flex-1 overflow-auto pb-20">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-            <Router />
-          </div>
+        <main className="flex-1 overflow-y-auto px-4 py-6 lg:px-6">
+          <AppRouter />
         </main>
-      </div>
+      </SidebarInset>
     </div>
   );
 }
@@ -158,7 +213,9 @@ export default function App() {
         <ThemeProvider defaultTheme="light" storageKey="rl-trader-theme">
           <TooltipProvider>
             <SidebarProvider style={style as React.CSSProperties}>
-              <AppContent />
+              <QuoteStreamProvider>
+                <AppContent />
+              </QuoteStreamProvider>
               <DisclaimerBanner />
             </SidebarProvider>
             <Toaster />

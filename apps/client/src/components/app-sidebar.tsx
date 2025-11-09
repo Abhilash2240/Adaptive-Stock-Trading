@@ -11,15 +11,16 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Link, useLocation } from "wouter";
-import { 
-  LayoutDashboard, 
-  Briefcase, 
-  LineChart, 
-  Cpu, 
-  TrendingUp, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Activity,
+  AlertTriangle,
+  Briefcase,
+  LineChart,
+  Cpu,
+  TrendingUp,
+  Settings,
   FileText,
-  Activity
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
@@ -28,6 +29,16 @@ const menuItems = [
     title: "Dashboard",
     url: "/",
     icon: LayoutDashboard,
+  },
+  {
+    title: "Streams",
+    url: "/streams",
+    icon: Activity,
+  },
+  {
+    title: "Diagnostics",
+    url: "/diagnostics",
+    icon: AlertTriangle,
   },
   {
     title: "Portfolio",
@@ -55,7 +66,7 @@ const menuItems = [
     icon: Settings,
   },
   {
-    title: "Logs & Diagnostics",
+    title: "Logs",
     url: "/logs",
     icon: FileText,
   },

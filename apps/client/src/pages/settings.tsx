@@ -30,7 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useSettings, useSaveSettings } from "@/hooks/use-api";
+import { useSettings, useSaveSettings, type UserSettingsResponse, type SaveSettingsPayload } from "@/hooks/use-api";
 import { useToast } from "@/hooks/use-toast";
 
 const auditLogs = [
@@ -97,13 +97,24 @@ export default function Settings() {
     handleSaveSettings({ tradingMode: "live" });
   };
 
-  const handleSaveSettings = async (updates: Partial<typeof userSettings>) => {
+  const handleSaveSettings = async (updates: Partial<UserSettingsResponse>) => {
     try {
-      await saveSettings.mutateAsync({
-        userId: demoUserId,
-        ...userSettings,
+      const base: SaveSettingsPayload = userSettings
+        ? { ...userSettings }
+        : {
+            userId: demoUserId,
+            tradingMode,
+            marketDataProvider,
+            geminiEnabled,
+            notificationsEnabled,
+          };
+
+      const payload: SaveSettingsPayload = {
+        ...base,
         ...updates,
-      });
+      };
+
+      await saveSettings.mutateAsync(payload);
       
       toast({
         title: "Settings Saved",
