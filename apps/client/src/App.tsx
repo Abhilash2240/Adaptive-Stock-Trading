@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Switch, Route } from "wouter";
+import { Switch, Route, useRoute, Link } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 
 import { queryClient } from "./lib/queryClient";
@@ -14,6 +14,7 @@ import { WebSocketStatus } from "@/components/websocket-status";
 import { TradingModeBadge } from "@/components/trading-mode-badge";
 import { useQuoteStreamContext, QuoteStreamProvider } from "@/context/quote-stream-context";
 import { apiBaseUrl, useBackendReady } from "@/hooks/use-api";
+import { Button } from "@/components/ui/button";
 import Dashboard from "@/pages/dashboard";
 import Streams from "@/pages/streams";
 import Diagnostics from "@/pages/diagnostics";
@@ -24,6 +25,7 @@ import PaperTrading from "@/pages/paper-trading";
 import Settings from "@/pages/settings";
 import Logs from "@/pages/logs";
 import NotFound from "@/pages/not-found";
+import Login from "@/pages/login";
 
 function useApiHealth() {
   const base = apiBaseUrl;
@@ -190,6 +192,9 @@ function AppContent() {
               lastMessage={lastMessageAt ?? undefined}
             />
             <ThemeToggle />
+            <Button asChild size="sm" variant="outline">
+              <Link href="/login">Login</Link>
+            </Button>
           </div>
         </header>
         <main className="flex-1 overflow-y-auto px-4 py-6 lg:px-6">
@@ -205,6 +210,7 @@ export default function App() {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "4rem",
   };
+  const [isLoginRoute] = useRoute("/login");
 
   return (
     <ErrorBoundary>
@@ -212,13 +218,20 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <ThemeProvider defaultTheme="light" storageKey="rl-trader-theme">
           <TooltipProvider>
-            <SidebarProvider style={style as React.CSSProperties}>
-              <QuoteStreamProvider>
-                <AppContent />
-              </QuoteStreamProvider>
-              <DisclaimerBanner />
-            </SidebarProvider>
-            <Toaster />
+            {isLoginRoute ? (
+              <>
+                <Login />
+                <Toaster />
+              </>
+            ) : (
+              <SidebarProvider style={style as React.CSSProperties}>
+                <QuoteStreamProvider>
+                  <AppContent />
+                </QuoteStreamProvider>
+                <DisclaimerBanner />
+                <Toaster />
+              </SidebarProvider>
+            )}
           </TooltipProvider>
         </ThemeProvider>
       </QueryClientProvider>
