@@ -75,7 +75,8 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [mode, setMode] = useState<"login" | "register">("login");
   const { login, register } = useAuth();
 
@@ -83,25 +84,34 @@ export default function Login() {
     e.preventDefault();
 
     if (!username.trim() || !password) {
-      setMessage("Please fill in all fields.");
+      setErrorMessage("Please fill in all fields.");
       return;
     }
     if (mode === "register" && password.length < 8) {
-      setMessage("Password must be at least 8 characters.");
+      setErrorMessage("Password must be at least 8 characters (include uppercase, lowercase and a number).");
       return;
     }
 
-    setMessage(null);
+    setErrorMessage(null);
+    setSuccessMessage(null);
     setIsSubmitting(true);
 
     try {
       if (mode === "login") {
         await login(username.trim(), password);
+        // After login, isAuthenticated turns true → AppGate renders dashboard
       } else {
-        await register(username.trim(), password);
+        // Register → show success → switch to sign-in
+        const registeredName = await register(username.trim(), password);
+        setPassword("");
+        setUsername(registeredName);
+        setMode("login");
+        setSuccessMessage(
+          `Account "${registeredName}" created successfully! Please sign in.`
+        );
       }
     } catch (err) {
-      setMessage(
+      setErrorMessage(
         err instanceof Error ? err.message : "Something went wrong. Try again."
       );
     } finally {
@@ -252,10 +262,18 @@ export default function Login() {
               </div>
             </div>
 
-            {message && (
+            {successMessage && (
+              <Alert className="border-emerald-200 bg-emerald-50 py-2 dark:border-emerald-800 dark:bg-emerald-950">
+                <AlertDescription className="text-sm text-emerald-700 dark:text-emerald-300">
+                  ✅ {successMessage}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {errorMessage && (
               <Alert variant="destructive" className="py-2">
                 <AlertDescription className="text-sm">
-                  {message}
+                  {errorMessage}
                 </AlertDescription>
               </Alert>
             )}
@@ -288,7 +306,8 @@ export default function Login() {
                   type="button"
                   onClick={() => {
                     setMode("register");
-                    setMessage(null);
+                    setErrorMessage(null);
+                    setSuccessMessage(null);
                   }}
                   className="font-medium text-emerald-600 underline-offset-4 hover:underline dark:text-emerald-400"
                 >
@@ -302,7 +321,8 @@ export default function Login() {
                   type="button"
                   onClick={() => {
                     setMode("login");
-                    setMessage(null);
+                    setErrorMessage(null);
+                    setSuccessMessage(null);
                   }}
                   className="font-medium text-emerald-600 underline-offset-4 hover:underline dark:text-emerald-400"
                 >

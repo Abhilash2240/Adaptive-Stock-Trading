@@ -14,17 +14,16 @@ from packages.api.app import create_app
 from packages.data.adapters.polygon import PolygonProvider
 from packages.data.provider import DataProvider, set_data_provider
 from packages.shared.config import get_settings
-from packages.shared.schemas import Quote, Symbol
+from packages.shared.schemas import Quote
 
 
 class DummyPolygonProvider(PolygonProvider):
     async def _fetch_last_trade(self, symbol: str) -> Quote | None:  # type: ignore[override]
-        try:
-            symbol_enum = Symbol(symbol.upper())
-        except ValueError:
+        sym = symbol.strip().upper()
+        if not sym.isalpha():
             return None
         return Quote(
-            symbol=symbol_enum,
+            symbol=sym,
             price=123.45,
             volume=42,
             timestamp=datetime.now(timezone.utc),

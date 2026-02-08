@@ -23,6 +23,7 @@ export interface QuoteStreamState {
   quotes: QuoteMessage[];
   history: QuoteHistoryMap;
   symbols: string[];
+  reconnectAttempt: number;
   subscribe: (symbol: string) => Promise<void>;
   isSubscribing: boolean;
   subscribeError: Error | null;
@@ -98,6 +99,7 @@ export function useQuoteStream(): QuoteStreamState {
     quotes,
     history,
     symbols,
+    reconnectAttempt: websocket.reconnectAttempt,
     subscribe,
     isSubscribing: subscribeMutation.isPending,
     subscribeError: (subscribeMutation.error as Error) ?? null,

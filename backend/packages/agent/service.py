@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from packages.data.provider import DataProvider
 from packages.shared.metrics import track_inference_latency
-from packages.shared.schemas import AgentAction, AgentState, AgentStatus, OrderSide, Symbol
+from packages.shared.schemas import AgentAction, AgentState, AgentStatus, OrderSide
 
 
 class AgentService:
@@ -10,7 +10,7 @@ class AgentService:
         self._provider = provider
         self._model_version = model_version
         self._last_action = AgentAction(
-            symbol=Symbol.AAPL,
+            symbol="AAPL",
             side=OrderSide.BUY,
             confidence=0.0,
             generated_at=datetime.now(timezone.utc),

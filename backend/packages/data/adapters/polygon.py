@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 
 from packages.data.provider import BaseAsyncProvider
-from packages.shared.schemas import Quote, Symbol
+from packages.shared.schemas import Quote
 
 logger = logging.getLogger(__name__)
 
@@ -112,12 +112,8 @@ class PolygonProvider(BaseAsyncProvider):
         data = self._extract_trade(payload)
         if data is None:
             return None
-        try:
-            symbol_enum = Symbol(data["symbol"])
-        except ValueError:
-            return None
         return Quote(
-            symbol=symbol_enum,
+            symbol=data["symbol"],
             price=data["price"],
             volume=data["size"],
             timestamp=data["timestamp"],

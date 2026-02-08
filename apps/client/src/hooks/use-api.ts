@@ -99,6 +99,7 @@ export function useBackendReady() {
 		queryFn: () => requestJson<BackendReadyResponse>("/health/ready"),
 		refetchInterval: 15000,
 		staleTime: 15000,
+		retry: 2,
 	});
 }
 
@@ -111,11 +112,13 @@ export function useBackendLive() {
 	});
 }
 
-export function useAgentStatus() {
+export function useAgentStatus(enabled = true) {
 	return useQuery<AgentStatusResponse>({
 		queryKey: ["agent-status"],
 		queryFn: () => requestJson<AgentStatusResponse>("/agent/status"),
-		refetchInterval: 4000,
+		refetchInterval: enabled ? 4000 : false,
+		enabled,
+		retry: 1,
 	});
 }
 

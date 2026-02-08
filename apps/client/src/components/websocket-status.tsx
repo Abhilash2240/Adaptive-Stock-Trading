@@ -9,12 +9,14 @@ interface WebSocketStatusProps {
   status?: ConnectionStatus;
   latency?: number;
   lastMessage?: Date;
+  reconnectAttempt?: number;
 }
 
 export function WebSocketStatus({ 
   status = "disconnected", 
   latency = 0,
-  lastMessage 
+  lastMessage,
+  reconnectAttempt = 0,
 }: WebSocketStatusProps) {
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -81,6 +83,9 @@ export function WebSocketStatus({
               <p>Latency: {latency}ms</p>
               <p>Last message: {getTimeSinceLastMessage()}</p>
             </>
+          )}
+          {status === "reconnecting" && reconnectAttempt > 0 && (
+            <p>Reconnect attempt: {reconnectAttempt}</p>
           )}
         </div>
       </TooltipContent>

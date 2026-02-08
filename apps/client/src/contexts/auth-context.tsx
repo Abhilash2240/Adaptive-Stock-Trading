@@ -11,7 +11,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string) => Promise<void>;
+  register: (username: string, password: string) => Promise<string>;
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -19,7 +19,14 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001';
+// Use the same API_BASE strategy as use-api.ts: empty string means all calls go
+// through the Vite dev-server proxy (which forwards /api/* to :8001).
+const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
+
+function resolveUrl(path: string): string {
+  if (!API_BASE) return path;
+  return `${API_BASE}${path}`;
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -27,7 +34,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for stored token on app startup
     const storedToken = localStorage.getItem('auth_token');
     if (storedToken) {
       setToken(storedToken);
@@ -39,25 +45,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const verifyToken = async (authToken: string) => {
     try {
-      const response = await fetch(`${API_BASE}/api/v1/auth/me`, {
+      const response = await fetch(resolveUrl('/api/v1/auth/me'), {
         headers: {
           'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json',
         },
       });
-
       if (response.ok) {
         const userData = await response.json();
         setUser(userData);
         setToken(authToken);
       } else {
-        // Token is invalid, clear it
         localStorage.removeItem('auth_token');
         setToken(null);
         setUser(null);
       }
-    } catch (error) {
-      console.error('Token verification failed:', error);
+    } catch {
       localStorage.removeItem('auth_token');
       setToken(null);
       setUser(null);
@@ -66,43 +69,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /* ── Login: authenticate, fetch profile, land on dashboard ── */
   const login = async (username: string, password: string) => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/api/v1/auth/login`, {
+      const response = await fetch(resolveUrl('/api/v1/auth/login'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
-
       if (!response.ok) {
         const errBody = await response.json().catch(() => null);
-        const detail = errBody?.detail || 'Login failed';
-        throw new Error(detail);
+        throw new Error(errBody?.detail || 'Incorrect username or password');
       }
-
       const data = await response.json();
       const accessToken = data.access_token;
 
-      // Persist token first
       localStorage.setItem('auth_token', accessToken);
       setToken(accessToken);
 
-      // Fetch full user profile using the new token
-      const meRes = await fetch(`${API_BASE}/api/v1/auth/me`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
+      // Fetch full user profile
+      const meRes = await fetch(resolveUrl('/api/v1/auth/me'), {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
       });
-
       if (meRes.ok) {
-        const userData = await meRes.json();
-        setUser(userData);
+        setUser(await meRes.json());
       } else {
-        // Token is valid but /me failed — build minimal user from token
         setUser({ id: '', username, created_at: new Date().toISOString(), is_active: true });
       }
     } catch (error) {
@@ -113,48 +105,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const register = async (username: string, password: string) => {
-    setIsLoading(true);
+  /* ── Register: create account on server but do NOT log in.
+       Returns the created username so the UI can show a success
+       message and redirect the user to the sign-in form. ───── */
+  const register = async (username: string, password: string): Promise<string> => {
     try {
-      const response = await fetch(`${API_BASE}/api/v1/auth/register`, {
+      const response = await fetch(resolveUrl('/api/v1/auth/register'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
-
       if (!response.ok) {
         const errBody = await response.json().catch(() => null);
-        const detail = errBody?.detail || 'Registration failed';
-        throw new Error(detail);
+        throw new Error(errBody?.detail || 'Registration failed');
       }
-
+      // Account created — return the username so login page can pre-fill it.
+      // We intentionally do NOT set token or user here.
       const data = await response.json();
-      const accessToken = data.access_token;
-
-      // Persist token first
-      localStorage.setItem('auth_token', accessToken);
-      setToken(accessToken);
-
-      // Use the user object from the register response, or fetch /me
-      if (data.user) {
-        setUser(data.user);
-      } else {
-        const meRes = await fetch(`${API_BASE}/api/v1/auth/me`, {
-          headers: { 'Authorization': `Bearer ${accessToken}` },
-        });
-        if (meRes.ok) {
-          setUser(await meRes.json());
-        } else {
-          setUser({ id: '', username, created_at: new Date().toISOString(), is_active: true });
-        }
-      }
+      return data.user?.username ?? username;
     } catch (error) {
       console.error('Registration failed:', error);
       throw error;
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -164,7 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('auth_token');
   };
 
-  const value = {
+  const value: AuthContextType = {
     user,
     token,
     login,

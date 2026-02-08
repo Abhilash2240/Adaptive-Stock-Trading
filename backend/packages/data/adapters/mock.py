@@ -6,20 +6,20 @@ from collections.abc import AsyncIterator, Sequence
 from datetime import datetime, timezone
 
 from packages.data.provider import BaseAsyncProvider
-from packages.shared.schemas import Quote, Symbol
+from packages.shared.schemas import Quote
 
 
 class MockProvider(BaseAsyncProvider):
     name = "mock"
 
-    def __init__(self, symbols: Sequence[Symbol] | None = None, interval: float = 1.0) -> None:
+    def __init__(self, symbols: Sequence[str] | None = None, interval: float = 1.0) -> None:
         super().__init__()
         self._queue: asyncio.Queue[Quote] = asyncio.Queue()
         self._task: asyncio.Task[None] | None = None
         self._interval = interval
-        initial = list(symbols or [Symbol.AAPL])
-        self._symbols: set[Symbol] = set(initial)
-        self._angles: dict[Symbol, float] = {symbol: random.uniform(0, 2 * math.pi) for symbol in initial}
+        initial = list(symbols or ["AAPL"])
+        self._symbols: set[str] = {s.upper() for s in initial}
+        self._angles: dict[str, float] = {s: random.uniform(0, 2 * math.pi) for s in self._symbols}
 
     async def start(self) -> None:
         await super().start()
@@ -35,14 +35,10 @@ class MockProvider(BaseAsyncProvider):
         await super().stop()
 
     async def subscribe(self, symbol: str, channel: str) -> None:
-        try:
-            symbol_enum = Symbol(symbol.upper())
-        except ValueError:
-            return None
-        if symbol_enum not in self._symbols:
-            self._symbols.add(symbol_enum)
-            self._angles[symbol_enum] = random.uniform(0, 2 * math.pi)
-        return None
+        sym = symbol.strip().upper()
+        if sym not in self._symbols:
+            self._symbols.add(sym)
+            self._angles[sym] = random.uniform(0, 2 * math.pi)
 
     def stream_quotes(self) -> AsyncIterator[Quote]:
         async def iterator() -> AsyncIterator[Quote]:

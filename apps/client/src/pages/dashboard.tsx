@@ -40,12 +40,13 @@ export default function Dashboard() {
 		isSubscribing,
 	} = useQuoteStreamContext();
 	const { data: backendReady } = useBackendReady();
+	const isAuthenticated = Boolean(localStorage.getItem("auth_token"));
 	const {
 		data: agentStatus,
 		refetch: refetchAgent,
 		isFetching: isAgentRefreshing,
 		isLoading: isAgentLoading,
-	} = useAgentStatus();
+	} = useAgentStatus(isAuthenticated);
 
 	const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
 	const [symbolInput, setSymbolInput] = useState("");

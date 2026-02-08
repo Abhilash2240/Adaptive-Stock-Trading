@@ -72,23 +72,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     
     # Security middleware
     app.add_middleware(
-        TrustedHostMiddleware, 
-        allowed_hosts=["localhost", "127.0.0.1", "*.yourdomain.com"] if resolved_settings.environment == "production" else ["*"]
+        TrustedHostMiddleware,
+        allowed_hosts=["*"]  # handled by CORS; Render/Vercel set their own proxy headers
     )
-    
-    # CORS middleware with security configurations
-    allowed_origins = (
-        ["https://yourdomain.com", "https://app.yourdomain.com"] 
-        if resolved_settings.environment == "production" 
-        else [
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:5173",
-            "http://localhost:8001",
-            "http://127.0.0.1:8001",
-        ]
-    )
+
+    # CORS middleware — use ALLOWED_ORIGINS env var so production deployments
+    # (Vercel frontend ↔ Render backend) work out of the box.
+    _env_origins = [o.strip() for o in resolved_settings.allowed_origins.split(",") if o.strip()]
+    allowed_origins = _env_origins or [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://localhost:8001",
+        "http://127.0.0.1:8001",
+    ]
     
     app.add_middleware(
         CORSMiddleware,
@@ -168,6 +166,67 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         }
 
+    # ── Stock quote REST endpoint (powered by Twelve Data) ────────
+    @app.get("/api/quote")
+    @limiter.limit("30/minute")
+    async def get_quote(
+        request: Request,
+        symbol: str = "AAPL",
+        provider: DataProvider = Depends(get_data_provider),
+    ) -> dict:
+        """
+        Return a single-stock quote.
+        If the active provider is TwelveData, fetches rich data (open/high/low/
+        close/volume/change).  Otherwise returns the latest streamed price.
+        """
+        sym = symbol.strip().upper()
+        from packages.data.adapters.twelvedata import TwelveDataProvider
+        if isinstance(provider, TwelveDataProvider):
+            try:
+                data = await provider.fetch_quote_detail(sym)
+                return {
+                    "symbol": data.get("symbol", sym),
+                    "name": data.get("name", sym),
+                    "price": float(data.get("close", 0)),
+                    "open": float(data.get("open", 0)),
+                    "high": float(data.get("high", 0)),
+                    "low": float(data.get("low", 0)),
+                    "volume": int(data.get("volume", 0)),
+                    "change": float(data.get("change", 0)),
+                    "percent_change": float(data.get("percent_change", 0)),
+                    "currency": data.get("currency", "USD"),
+                    "exchange": data.get("exchange", ""),
+                    "provider": "twelvedata",
+                }
+            except Exception as exc:
+                raise HTTPException(status_code=502, detail=f"Twelve Data error: {exc}")
+        # Fallback for mock / polygon — no rich data available
+        return {"symbol": sym, "price": 0, "provider": provider.name, "currency": "USD"}
+
+    @app.get("/api/stocks")
+    @limiter.limit("10/minute")
+    async def list_stocks(
+        request: Request,
+        symbol: str | None = None,
+        exchange: str | None = None,
+        country: str | None = None,
+        type: str | None = None,
+        provider: DataProvider = Depends(get_data_provider),
+    ) -> dict:
+        """
+        Proxy to Twelve Data /stocks endpoint — returns available symbols.
+        """
+        from packages.data.adapters.twelvedata import TwelveDataProvider
+        if not isinstance(provider, TwelveDataProvider):
+            return {"data": [], "status": "ok", "provider": provider.name,
+                    "message": "Stock listing only available with Twelve Data provider"}
+        try:
+            return await provider.fetch_stocks_list(
+                symbol=symbol, exchange=exchange, country=country, stock_type=type
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Twelve Data error: {exc}")
+
     @app.post("/stream")
     @limiter.limit("10/minute")  # Rate limit stream requests
     async def request_stream(
@@ -178,7 +237,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict[str, str]:
         # Validate and sanitize input
         validated_data = validator.validate_stream_request({
-            "symbol": stream_request.symbol.value,
+            "symbol": stream_request.symbol,
             "channel": stream_request.channel
         })
         
@@ -188,7 +247,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             details={"symbol": validated_data["symbol"], "channel": validated_data["channel"]}
         )
         
-        await provider.subscribe(stream_request.symbol.value, stream_request.channel)
+        await provider.subscribe(stream_request.symbol, stream_request.channel)
         return {"status": "subscribed"}
 
     @app.websocket("/ws/quotes")

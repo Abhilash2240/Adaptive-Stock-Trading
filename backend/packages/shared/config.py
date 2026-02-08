@@ -18,10 +18,12 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: str = ""
     polygon_api_key: str = ""
-    data_provider: str = "mock"
+    twelvedata_api_key: str = ""
+    data_provider: str = "twelvedata"  # twelvedata | polygon | mock
     symbols: str = "AAPL,MSFT,TSLA"
     mock_stream_interval: float = 1.0
     polygon_poll_interval: float = 1.0
+    twelvedata_poll_interval: float = 5.0  # free tier: 8 req/min
     firebase_project_id: str = ""
     firebase_auth_audience: str = ""
     pubsub_topic: str | None = None

@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from typing import Protocol, cast
 
 from packages.shared.config import get_settings
-from packages.shared.schemas import Quote, Symbol
+from packages.shared.schemas import Quote
 
 
 class DataProvider(Protocol):
@@ -52,28 +52,32 @@ def get_data_provider() -> DataProvider:
     if _provider is None:
         settings = get_settings()
         provider_name = settings.data_provider.lower()
-        symbols = [symbol.strip().upper() for symbol in settings.symbols.split(",") if symbol.strip()]
-        valid_symbols = []
-        for value in symbols:
-            try:
-                valid_symbols.append(Symbol(value))
-            except ValueError:
-                continue
-        if not valid_symbols:
-            valid_symbols = [Symbol.AAPL]
+        symbols = [s.strip().upper() for s in settings.symbols.split(",") if s.strip()]
+        if not symbols:
+            symbols = ["AAPL"]
 
-        if provider_name == "polygon":
+        if provider_name == "twelvedata":
+            if not settings.twelvedata_api_key:
+                raise ValueError("TWELVEDATA_API_KEY must be set for twelvedata data provider")
+            from .adapters.twelvedata import TwelveDataProvider
+
+            _provider = TwelveDataProvider(
+                api_key=settings.twelvedata_api_key,
+                symbols=symbols,
+                interval=settings.twelvedata_poll_interval,
+            )
+        elif provider_name == "polygon":
             if not settings.polygon_api_key:
                 raise ValueError("POLYGON_API_KEY must be set for polygon data provider")
             from .adapters.polygon import PolygonProvider
 
             _provider = PolygonProvider(
                 api_key=settings.polygon_api_key,
-                symbols=[symbol.value for symbol in valid_symbols],
+                symbols=symbols,
                 interval=settings.polygon_poll_interval,
             )
         else:
             from .adapters.mock import MockProvider
 
-            _provider = MockProvider(symbols=valid_symbols, interval=settings.mock_stream_interval)
+            _provider = MockProvider(symbols=symbols, interval=settings.mock_stream_interval)
     return cast(DataProvider, _provider)

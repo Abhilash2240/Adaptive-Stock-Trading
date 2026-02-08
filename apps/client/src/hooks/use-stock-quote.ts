@@ -1,9 +1,22 @@
 import { useEffect, useState } from "react";
 
-export function useStockQuote(symbol: string, pollMs = 3500) {
-  const [price, setPrice] = useState<number | null>(null);
-  const [currency, setCurrency] = useState<string | undefined>();
-  const [provider, setProvider] = useState<string | undefined>();
+export interface StockQuote {
+  symbol: string;
+  name?: string;
+  price: number | null;
+  open?: number;
+  high?: number;
+  low?: number;
+  volume?: number;
+  change?: number;
+  percentChange?: number;
+  currency?: string;
+  exchange?: string;
+  provider?: string;
+}
+
+export function useStockQuote(symbol: string, pollMs = 5000) {
+  const [quote, setQuote] = useState<StockQuote>({ symbol, price: null });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -15,13 +28,31 @@ export function useStockQuote(symbol: string, pollMs = 3500) {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/quote?symbol=${encodeURIComponent(symbol)}`);
+        const token = localStorage.getItem("auth_token");
+        const headers: Record<string, string> = token
+          ? { Authorization: `Bearer ${token}` }
+          : {};
+        const res = await fetch(
+          `/api/quote?symbol=${encodeURIComponent(symbol)}`,
+          { headers }
+        );
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
         if (!cancel) {
-          setPrice(data.price);
-          setCurrency(data.currency);
-          setProvider(data.provider);
+          setQuote({
+            symbol: data.symbol ?? symbol,
+            name: data.name,
+            price: data.price ?? null,
+            open: data.open,
+            high: data.high,
+            low: data.low,
+            volume: data.volume,
+            change: data.change,
+            percentChange: data.percent_change,
+            currency: data.currency,
+            exchange: data.exchange,
+            provider: data.provider,
+          });
         }
       } catch (e: any) {
         if (!cancel) setError(e.message || "Unknown error");
@@ -37,5 +68,10 @@ export function useStockQuote(symbol: string, pollMs = 3500) {
     };
   }, [symbol, pollMs]);
 
-  return { price, currency, provider, loading, error };
+  // Backwards-compatible individual fields
+  return {
+    ...quote,
+    loading,
+    error,
+  };
 }

@@ -144,10 +144,26 @@ function AppRouter() {
   );
 }
 
-/** Authenticated shell — only rendered after login */
-function AuthenticatedShell() {
-  const { status, latency, lastMessageAt, reconnectAttempt } = useQuoteStreamContext();
-  const { logout, user } = useAuth();
+function AppContent() {
+  const { status, latency, lastMessageAt } = useQuoteStreamContext();
+  const { isAuthenticated, logout, user, isLoading } = useAuth();
+  
+  // Show loading screen while checking authentication
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // If not authenticated, show login page
+  if (!isAuthenticated) {
+    return <Login />;
+  }
 
   const {
     data: backendReady,
@@ -183,7 +199,6 @@ function AuthenticatedShell() {
               status={status}
               latency={latency ?? undefined}
               lastMessage={lastMessageAt ?? undefined}
-              reconnectAttempt={reconnectAttempt}
             />
             <ThemeToggle />
             <div className="flex items-center gap-2">
@@ -204,41 +219,12 @@ function AuthenticatedShell() {
   );
 }
 
-/** Gate component — renders login OR the authenticated app */
-function AppGate() {
-  const { isAuthenticated, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="text-center space-y-4">
-          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <Login />;
-  }
-
+export default function App() {
   const style = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "4rem",
   };
 
-  return (
-    <SidebarProvider style={style as React.CSSProperties}>
-      <QuoteStreamProvider>
-        <AuthenticatedShell />
-      </QuoteStreamProvider>
-      <DisclaimerBanner />
-    </SidebarProvider>
-  );
-}
-
-export default function App() {
   return (
     <ErrorBoundary>
       <ApiBanner />
@@ -246,8 +232,13 @@ export default function App() {
         <AuthProvider>
           <ThemeProvider defaultTheme="light" storageKey="rl-trader-theme">
             <TooltipProvider>
-              <AppGate />
-              <Toaster />
+              <SidebarProvider style={style as React.CSSProperties}>
+                <QuoteStreamProvider>
+                  <AppContent />
+                </QuoteStreamProvider>
+                <DisclaimerBanner />
+                <Toaster />
+              </SidebarProvider>
             </TooltipProvider>
           </ThemeProvider>
         </AuthProvider>
