@@ -5,7 +5,9 @@ server/public
 vite.config.ts.*
 *.tar.gz
 .env*
-!/.env
+!.env.example
+!backend/.env.example
+!apps/client/.env.example
 .firebase*
 .vercel
 .render/
@@ -15,6 +17,5 @@ vite.config.ts.*
 reports/
 stats/
 .lighthouseci/
-!.env.example
-!backend/.env.example
-!apps/client/.env.example
+__pycache__/
+*.pyc

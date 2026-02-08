@@ -34,6 +34,15 @@ validator = InputValidator()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Initialize database (create tables if needed)
+    try:
+        from packages.db.engine import init_db, close_db
+        await init_db()
+        print("✅ PostgreSQL database connected and tables ready.")
+    except Exception as exc:
+        print(f"⚠️  Database init skipped: {exc}")
+        print("   Set DATABASE_URL in .env to enable persistence.")
+
     provider = get_data_provider()
     await provider.start()
     agent = get_agent_service()
@@ -44,6 +53,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         await provider.stop()
         reset_agent_service()
+        # Close database connections
+        try:
+            from packages.db.engine import close_db
+            await close_db()
+        except Exception:
+            pass
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -65,7 +80,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     allowed_origins = (
         ["https://yourdomain.com", "https://app.yourdomain.com"] 
         if resolved_settings.environment == "production" 
-        else ["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000"]
+        else [
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:5173",
+            "http://localhost:8001",
+            "http://127.0.0.1:8001",
+        ]
     )
     
     app.add_middleware(
@@ -101,6 +123,50 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         include_in_schema=False,
         should_gzip=True,
     )
+
+    # Root route
+    @app.get("/")
+    async def root():
+        """API root endpoint with basic information."""
+        return {
+            "message": "Adaptive Stock Trading API",
+            "version": "1.0.0",
+            "status": "running",
+            "docs": "/docs",
+            "health": "/api/v1/health",
+            "auth": "/api/v1/auth",
+            "features": [
+                "JWT Authentication",
+                "Real-time Stock Data Streaming",
+                "AI Trading Agent",
+                "Rate Limiting",
+                "Security Headers",
+                "Audit Logging"
+            ]
+        }
+
+    # API status endpoint
+    @app.get("/api/status")
+    async def api_status():
+        """Get API status and configuration."""
+        return {
+            "status": "operational",
+            "environment": resolved_settings.environment,
+            "security": {
+                "authentication": "JWT",
+                "rate_limiting": "enabled",
+                "cors": "configured",
+                "security_headers": "enabled"
+            },
+            "endpoints": {
+                "docs": "/docs",
+                "health": "/api/v1/health",
+                "auth": "/api/v1/auth",
+                "stream": "/stream",
+                "websocket": "/ws/quotes",
+                "agent_status": "/agent/status"
+            }
+        }
 
     @app.post("/stream")
     @limiter.limit("10/minute")  # Rate limit stream requests

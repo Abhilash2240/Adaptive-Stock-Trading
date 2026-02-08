@@ -12,12 +12,18 @@ function resolveUrl(path: string): string {
 	return `${API_BASE}${path}`;
 }
 
+function getAuthHeaders(): Record<string, string> {
+	const token = localStorage.getItem("auth_token");
+	return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function request(path: string, init: RequestInit = {}): Promise<Response> {
 	const response = await fetch(resolveUrl(path), {
 		credentials: "include",
 		...init,
 		headers: {
 			Accept: "application/json",
+			...getAuthHeaders(),
 			...(init.headers ?? {}),
 		},
 	});
@@ -84,7 +90,7 @@ export function resolveWebSocketUrl(): string {
 		const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 		return `${protocol}//${window.location.host}/ws/quotes`;
 	}
-	return "ws://localhost:8080/ws/quotes";
+	return "ws://localhost:8001/ws/quotes";
 }
 
 export function useBackendReady() {

@@ -138,87 +138,86 @@ class JWTManager:
                 detail="Invalid token"
             )
 
-# In-memory user store (replace with database in production)
+# Database-backed user store (PostgreSQL via asyncpg)
+def _db_user_to_model(db_user) -> User:
+    """Convert a UserDB row to the Pydantic User model."""
+    return User(
+        id=db_user.id,
+        username=db_user.username,
+        created_at=db_user.created_at,
+        is_active=db_user.is_active,
+    )
+
+
 class UserStore:
-    """Simple in-memory user store for demonstration."""
-    
-    def __init__(self):
-        self._users: dict[str, dict] = {}
-        self._user_counter = 0
-    
-    def create_user(self, username: str, hashed_password: str) -> User:
-        """Create a new user."""
-        if self.get_user_by_username(username):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Username already exists"
-            )
-        
-        self._user_counter += 1
-        user_id = f"user_{self._user_counter}"
-        
-        user_data = {
-            "id": user_id,
-            "username": username,
-            "password_hash": hashed_password,
-            "created_at": datetime.now(timezone.utc),
-            "is_active": True
-        }
-        
-        self._users[user_id] = user_data
-        
-        return User(
-            id=user_data["id"],
-            username=user_data["username"],
-            created_at=user_data["created_at"],
-            is_active=user_data["is_active"]
-        )
-    
-    def get_user_by_username(self, username: str) -> User | None:
-        """Get user by username."""
-        for user_data in self._users.values():
-            if user_data["username"] == username:
-                return User(
-                    id=user_data["id"],
-                    username=user_data["username"],
-                    created_at=user_data["created_at"],
-                    is_active=user_data["is_active"]
+    """Async PostgreSQL-backed user store."""
+
+    async def create_user(self, username: str, hashed_password: str) -> User:
+        """Create a new user in the database."""
+        from packages.db.engine import get_session_ctx
+        from packages.db.repositories import UserRepository
+
+        async with get_session_ctx() as session:
+            repo = UserRepository(session)
+            existing = await repo.get_by_username(username)
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Username already exists",
                 )
-        return None
-    
-    def get_user_by_id(self, user_id: str) -> User | None:
-        """Get user by ID."""
-        user_data = self._users.get(user_id)
-        if user_data:
-            return User(
-                id=user_data["id"],
-                username=user_data["username"],
-                created_at=user_data["created_at"],
-                is_active=user_data["is_active"]
-            )
-        return None
-    
-    def authenticate_user(self, username: str, password: str) -> User | None:
+            db_user = await repo.create(username, hashed_password)
+            return _db_user_to_model(db_user)
+
+    async def get_user_by_username(self, username: str) -> User | None:
+        """Get user by username from the database."""
+        from packages.db.engine import get_session_ctx
+        from packages.db.repositories import UserRepository
+
+        async with get_session_ctx() as session:
+            repo = UserRepository(session)
+            db_user = await repo.get_by_username(username)
+            return _db_user_to_model(db_user) if db_user else None
+
+    async def get_user_by_id(self, user_id: str) -> User | None:
+        """Get user by ID from the database."""
+        from packages.db.engine import get_session_ctx
+        from packages.db.repositories import UserRepository
+
+        async with get_session_ctx() as session:
+            repo = UserRepository(session)
+            db_user = await repo.get_by_id(user_id)
+            return _db_user_to_model(db_user) if db_user else None
+
+    async def get_user_with_hash(self, username: str) -> dict | None:
+        """Get user data including password hash (for authentication)."""
+        from packages.db.engine import get_session_ctx
+        from packages.db.repositories import UserRepository
+
+        async with get_session_ctx() as session:
+            repo = UserRepository(session)
+            db_user = await repo.get_by_username(username)
+            if not db_user:
+                return None
+            return {
+                "id": db_user.id,
+                "username": db_user.username,
+                "password_hash": db_user.password_hash,
+                "created_at": db_user.created_at,
+                "is_active": db_user.is_active,
+            }
+
+    async def authenticate_user(self, username: str, password: str) -> User | None:
         """Authenticate user with username and password."""
-        # Find user data
-        user_data = None
-        for uid, data in self._users.items():
-            if data["username"] == username:
-                user_data = data
-                break
-        
+        user_data = await self.get_user_with_hash(username)
         if not user_data:
             return None
-        
-        # Verify password
         if not password_manager.verify_password(password, user_data["password_hash"]):
             return None
-        
         return User(
             id=user_data["id"],
             username=user_data["username"],
             created_at=user_data["created_at"],
-            is_active=user_data["is_active"]
+            is_active=user_data["is_active"],
         )
 
 # Global instances
@@ -237,26 +236,21 @@ async def get_current_user(
     
     try:
         token_data = jwt_manager.verify_token(credentials.credentials)
-        user_data = user_store.get_user_by_id(token_data.user_id)
+        user = await user_store.get_user_by_id(token_data.user_id)
         
-        if user_data is None:
+        if user is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User not found"
             )
         
-        if not user_data["is_active"]:
+        if not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Inactive user"
             )
         
-        return User(
-            id=user_data["id"],
-            username=user_data["username"],
-            created_at=user_data["created_at"],
-            is_active=user_data["is_active"]
-        )
+        return user
         
     except HTTPException:
         raise
@@ -345,31 +339,77 @@ def add_security_headers(response):
     )
     return response
 
-# Audit logging
+# Audit logging — persists to PostgreSQL + prints to stdout
 class AuditLogger:
-    """Simple audit logger for security events."""
-    
+    """Audit logger that writes to the database and to stdout."""
+
     @staticmethod
-    def log_auth_attempt(username: str, success: bool, ip: str = "unknown"):
+    async def log_auth_attempt(username: str, success: bool, ip: str = "unknown"):
         """Log authentication attempts."""
         timestamp = datetime.now(timezone.utc).isoformat()
-        status = "SUCCESS" if success else "FAILED"
-        print(f"[AUDIT] {timestamp} - AUTH {status} - User: {username} - IP: {ip}")
-    
+        status_label = "SUCCESS" if success else "FAILED"
+        print(f"[AUDIT] {timestamp} - AUTH {status_label} - User: {username} - IP: {ip}")
+        try:
+            from packages.db.engine import get_session_ctx
+            from packages.db.repositories import AuditLogRepository
+            async with get_session_ctx() as session:
+                repo = AuditLogRepository(session)
+                await repo.log(
+                    event_type="AUTH",
+                    username=username,
+                    success=success,
+                    ip_address=ip,
+                    action="login" if success else "login_failed",
+                )
+        except Exception as exc:
+            print(f"[AUDIT] DB write failed: {exc}")
+
     @staticmethod
-    def log_api_access(user_id: str, endpoint: str, ip: str = "unknown"):
+    async def log_api_access(user_id: str, endpoint: str, ip: str = "unknown"):
         """Log API access."""
         timestamp = datetime.now(timezone.utc).isoformat()
         print(f"[AUDIT] {timestamp} - API ACCESS - User: {user_id} - Endpoint: {endpoint} - IP: {ip}")
+        try:
+            from packages.db.engine import get_session_ctx
+            from packages.db.repositories import AuditLogRepository
+            async with get_session_ctx() as session:
+                repo = AuditLogRepository(session)
+                await repo.log(
+                    event_type="API_ACCESS",
+                    user_id=user_id,
+                    action=endpoint,
+                    ip_address=ip,
+                )
+        except Exception as exc:
+            print(f"[AUDIT] DB write failed: {exc}")
+
+    @staticmethod
+    async def log_user_action(user_id: str | int, action: str, details: dict | None = None):
+        """Log a user action."""
+        timestamp = datetime.now(timezone.utc).isoformat()
+        print(f"[AUDIT] {timestamp} - ACTION - User: {user_id} - Action: {action}")
+        try:
+            from packages.db.engine import get_session_ctx
+            from packages.db.repositories import AuditLogRepository
+            async with get_session_ctx() as session:
+                repo = AuditLogRepository(session)
+                await repo.log(
+                    event_type="USER_ACTION",
+                    user_id=str(user_id),
+                    action=action,
+                    details=details,
+                )
+        except Exception as exc:
+            print(f"[AUDIT] DB write failed: {exc}")
 
 audit_logger = AuditLogger()
 
 # Utility functions for authentication
-def authenticate_user(username: str, password: str) -> User | None:
+async def authenticate_user(username: str, password: str) -> User | None:
     """Authenticate user with username and password."""
-    return user_store.authenticate_user(username, password)
+    return await user_store.authenticate_user(username, password)
 
-def create_user_account(username: str, password: str) -> User:
+async def create_user_account(username: str, password: str) -> User:
     """Create a new user account."""
     if not password_manager.validate_password_strength(password):
         raise HTTPException(
@@ -378,4 +418,4 @@ def create_user_account(username: str, password: str) -> User:
         )
     
     hashed_password = password_manager.hash_password(password)
-    return user_store.create_user(username, hashed_password)
+    return await user_store.create_user(username, hashed_password)

@@ -15,6 +15,7 @@ import { TradingModeBadge } from "@/components/trading-mode-badge";
 import { useQuoteStreamContext, QuoteStreamProvider } from "@/context/quote-stream-context";
 import { apiBaseUrl, useBackendReady } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
+import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import Dashboard from "@/pages/dashboard";
 import Streams from "@/pages/streams";
 import Diagnostics from "@/pages/diagnostics";
@@ -25,11 +26,11 @@ import PaperTrading from "@/pages/paper-trading";
 import Settings from "@/pages/settings";
 import Logs from "@/pages/logs";
 import NotFound from "@/pages/not-found";
-import Login from "@/pages/login";
+import Login from "@/pages/login-new";
 
 function useApiHealth() {
   const base = apiBaseUrl;
-  const target = `${base || ""}/health/ready`;
+  const target = `${base || ""}/api/status`;
   const [status, setStatus] = useState<"ok" | "fail" | "checking">("checking");
   const [error, setError] = useState<string>("");
 
@@ -117,21 +118,9 @@ function ApiBanner() {
 
   return (
     <div className="bg-red-50 text-red-700 border-b border-red-100 px-4 py-3 text-sm text-center">
-      <p className="font-semibold">Backend connectivity warning</p>
-      <p className="mt-1">{message}</p>
-      {status === "fail" && target && (
-        <p className="mt-2 text-xs">
-          Attempted to reach {" "}
-          <a className="underline" href={target} target="_blank" rel="noopener noreferrer">
-            {target}
-          </a>
-          .
-        </p>
-      )}
-      {apiBaseUrl && (
-        <p className="mt-2 text-xs">
-          Using <code className="font-mono">{apiBaseUrl}</code> as the API base URL.
-        </p>
+      <span className="font-medium">{message}</span>
+      {status === "fail" && (
+        <span className="ml-2 text-xs opacity-75">({target})</span>
       )}
     </div>
   );
@@ -141,6 +130,7 @@ function AppRouter() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
+      <Route path="/dashboard" component={Dashboard} />
       <Route path="/streams" component={Streams} />
       <Route path="/diagnostics" component={Diagnostics} />
       <Route path="/portfolio" component={Portfolio} />
@@ -154,8 +144,11 @@ function AppRouter() {
   );
 }
 
-function AppContent() {
+/** Authenticated shell — only rendered after login */
+function AuthenticatedShell() {
   const { status, latency, lastMessageAt } = useQuoteStreamContext();
+  const { logout, user } = useAuth();
+
   const {
     data: backendReady,
     isLoading: isBackendLoading,
@@ -174,9 +167,9 @@ function AppContent() {
   }
 
   return (
-    <div className="flex min-h-screen w-full bg-background text-foreground">
+    <div className="flex min-h-screen">
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="flex flex-1 flex-col">
         <header className="flex h-16 items-center justify-between border-b px-4 lg:px-6">
           <div className="flex items-center gap-3">
             <SidebarTrigger className="md:hidden" />
@@ -192,9 +185,14 @@ function AppContent() {
               lastMessage={lastMessageAt ?? undefined}
             />
             <ThemeToggle />
-            <Button asChild size="sm" variant="outline">
-              <Link href="/login">Login</Link>
-            </Button>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">
+                Welcome, {user?.username}
+              </span>
+              <Button size="sm" variant="outline" onClick={logout}>
+                Logout
+              </Button>
+            </div>
           </div>
         </header>
         <main className="flex-1 overflow-y-auto px-4 py-6 lg:px-6">
@@ -205,35 +203,53 @@ function AppContent() {
   );
 }
 
-export default function App() {
+/** Gate component — renders login OR the authenticated app */
+function AppGate() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Login />;
+  }
+
   const style = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "4rem",
   };
-  const [isLoginRoute] = useRoute("/login");
 
+  return (
+    <SidebarProvider style={style as React.CSSProperties}>
+      <QuoteStreamProvider>
+        <AuthenticatedShell />
+      </QuoteStreamProvider>
+      <DisclaimerBanner />
+    </SidebarProvider>
+  );
+}
+
+export default function App() {
   return (
     <ErrorBoundary>
       <ApiBanner />
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider defaultTheme="light" storageKey="rl-trader-theme">
-          <TooltipProvider>
-            {isLoginRoute ? (
-              <>
-                <Login />
-                <Toaster />
-              </>
-            ) : (
-              <SidebarProvider style={style as React.CSSProperties}>
-                <QuoteStreamProvider>
-                  <AppContent />
-                </QuoteStreamProvider>
-                <DisclaimerBanner />
-                <Toaster />
-              </SidebarProvider>
-            )}
-          </TooltipProvider>
-        </ThemeProvider>
+        <AuthProvider>
+          <ThemeProvider defaultTheme="light" storageKey="rl-trader-theme">
+            <TooltipProvider>
+              <AppGate />
+              <Toaster />
+            </TooltipProvider>
+          </ThemeProvider>
+        </AuthProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

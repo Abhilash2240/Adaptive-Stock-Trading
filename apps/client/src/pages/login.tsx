@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Link } from "wouter";
-import { Lock } from "lucide-react";
+import { useLocation } from "wouter";
+import { Lock, UserPlus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -14,31 +14,68 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/contexts/auth-context";
 
 export default function Login() {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const timeoutRef = useRef<number | null>(null);
+  const [activeTab, setActiveTab] = useState("login");
+  const { login, register, isAuthenticated } = useAuth();
+  const [, navigate] = useLocation();
 
+  // Redirect if already authenticated
   useEffect(() => {
-    return () => {
-      if (timeoutRef.current !== null) {
-        window.clearTimeout(timeoutRef.current);
-      }
-    };
-  }, []);
+    if (isAuthenticated) {
+      navigate("/dashboard");
+    }
+  }, [isAuthenticated, navigate]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!username || !password) {
+      setMessage("Please fill in all fields");
+      return;
+    }
+
     setMessage(null);
     setIsSubmitting(true);
 
-    timeoutRef.current = window.setTimeout(() => {
+    try {
+      await login(username, password);
+      navigate("/dashboard");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Login failed");
+    } finally {
       setIsSubmitting(false);
-      setMessage("Authentication service is not configured yet. Please connect the login endpoint.");
-    }, 600);
+    }
+  };
+
+  const handleRegister = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!username || !password) {
+      setMessage("Please fill in all fields");
+      return;
+    }
+
+    if (password.length < 8) {
+      setMessage("Password must be at least 8 characters long");
+      return;
+    }
+
+    setMessage(null);
+    setIsSubmitting(true);
+
+    try {
+      await register(username, password);
+      navigate("/dashboard");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Registration failed");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

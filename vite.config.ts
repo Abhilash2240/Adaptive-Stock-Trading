@@ -46,6 +46,28 @@ export default defineConfig(async () => {
         strict: true,
         deny: ["**/.*"],
       },
+      proxy: {
+        "/api": {
+          target: "http://127.0.0.1:8001",
+          changeOrigin: true,
+        },
+        "/stream": {
+          target: "http://127.0.0.1:8001",
+          changeOrigin: true,
+        },
+        "/agent": {
+          target: "http://127.0.0.1:8001",
+          changeOrigin: true,
+        },
+        "/health": {
+          target: "http://127.0.0.1:8001",
+          changeOrigin: true,
+        },
+        "/ws": {
+          target: "ws://127.0.0.1:8001",
+          ws: true,
+        },
+      },
     },
   };
 });

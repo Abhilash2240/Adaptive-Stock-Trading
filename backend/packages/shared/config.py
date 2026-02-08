@@ -1,5 +1,17 @@
 from functools import lru_cache
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
+
+# Locate the project root .env (two levels up from this file)
+_THIS_DIR = Path(__file__).resolve().parent          # packages/shared/
+_BACKEND_DIR = _THIS_DIR.parent.parent               # backend/
+_PROJECT_ROOT = _BACKEND_DIR.parent                   # Adaptive-Stock-Trading/
+
+_ENV_FILES: list[str] = []
+for candidate in [_BACKEND_DIR / ".env", _PROJECT_ROOT / ".env", Path(".env")]:
+    if candidate.exists():
+        _ENV_FILES.append(str(candidate))
 
 
 class Settings(BaseSettings):
@@ -29,7 +41,7 @@ class Settings(BaseSettings):
     trust_proxy: bool = False
 
     class Config:
-        env_file = ".env"
+        env_file = _ENV_FILES or ".env"
         case_sensitive = False
 
 

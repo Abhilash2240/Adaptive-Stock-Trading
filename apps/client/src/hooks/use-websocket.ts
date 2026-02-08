@@ -38,18 +38,27 @@ export function useWebSocket<TMessage = unknown>(
   }, [options.onMessage]);
 
   const resolveUrl = useCallback((): string => {
+    let base: string;
     if (explicitUrl) {
-      return explicitUrl;
+      base = explicitUrl;
+    } else {
+      const envUrl = (import.meta.env as any).VITE_WS_URL as string | undefined;
+      if (envUrl) {
+        base = envUrl;
+      } else {
+        const protocol = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss:" : "ws:";
+        const host = typeof window !== "undefined" ? window.location.host : "localhost";
+        base = `${protocol}//${host}/ws/quotes`;
+      }
     }
 
-    const envUrl = (import.meta.env as any).VITE_WS_URL as string | undefined;
-    if (envUrl) {
-      return envUrl;
+    // Attach JWT token so backend authenticates the WebSocket
+    const token = localStorage.getItem("auth_token");
+    if (token) {
+      const sep = base.includes("?") ? "&" : "?";
+      return `${base}${sep}token=${encodeURIComponent(token)}`;
     }
-
-    const protocol = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = typeof window !== "undefined" ? window.location.host : "localhost";
-    return `${protocol}//${host}/ws/quotes`;
+    return base;
   }, [explicitUrl]);
 
   const cleanupReconnect = useCallback(() => {

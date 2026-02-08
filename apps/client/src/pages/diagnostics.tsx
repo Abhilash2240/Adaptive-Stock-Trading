@@ -1,142 +1,160 @@
-import { useMemo } from "react";
-import { AlertTriangle, Clock, RefreshCw, WifiOff } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
+import { Activity, BarChart3 } from "lucide-react";
 
 import { useQuoteStreamContext } from "@/context/quote-stream-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { formatPrice, formatRelativeTime } from "@/utils/formatters";
+
+import { formatRelativeTime, formatPrice } from "@/utils/formatters";
 
 export default function Diagnostics() {
-  const { history, status, latency, lastMessageAt, reconnect, isConnected, quotes } = useQuoteStreamContext();
+  const { history, symbols } = useQuoteStreamContext();
+  const [filter, setFilter] = useState("");
 
-  const events = useMemo(() => {
-    const flattened = Object.values(history).flat();
-    return flattened
-      .map((event) => ({
-        ...event,
-        timestampValue: new Date(event.timestamp).getTime(),
-      }))
-      .filter((event) => !Number.isNaN(event.timestampValue))
-      .sort((a, b) => b.timestampValue - a.timestampValue)
-      .slice(0, 120);
-  }, [history]);
-
-  const lastEvent = events[0];
+  const filteredSymbols = useMemo(() => {
+    const query = filter.trim().toUpperCase();
+    if (!query) {
+      return symbols;
+    }
+    return symbols.filter((symbol) => symbol.includes(query));
+  }, [filter, symbols]);
 
   return (
     <div className="space-y-6" data-testid="page-diagnostics">
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight">Diagnostics</h1>
+      <div className="flex flex-col gap-2">
+        <h1 className="text-3xl font-bold tracking-tight">Market Diagnostics</h1>
         <p className="text-muted-foreground">
-          Inspect the quote stream timeline and connection health to the FastAPI backend.
+          Inspect the latest ticks captured from the backend quote stream for each subscribed symbol.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Socket Status</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex items-center gap-2 text-lg font-semibold">
-              <span>{status.toUpperCase()}</span>
-              {!isConnected && <WifiOff className="h-4 w-4 text-destructive" />}
-            </div>
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Symbols</span>
-              <span>{quotes.length}</span>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Latency</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex items-center gap-2 text-lg font-semibold">
-              <Clock className="h-4 w-4" />
-              <span>{latency !== null ? `${Math.max(0, Math.round(latency))} ms` : "—"}</span>
-            </div>
-            <div className="text-xs text-muted-foreground">Time between backend publish and receipt.</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Last Event</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="text-lg font-semibold">{lastEvent ? lastEvent.symbol : "—"}</div>
-            <div className="text-xs text-muted-foreground">{formatRelativeTime(lastEvent?.timestamp)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Controls</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Button variant="outline" size="sm" className="w-full" onClick={() => reconnect()} data-testid="button-reconnect">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Restart Connection
-            </Button>
-            <div className="text-xs text-muted-foreground">
-              Last message {formatRelativeTime(lastMessageAt)}.
-            </div>
-          </CardContent>
-        </Card>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="px-3 py-1 text-sm">
+            {filteredSymbols.length} symbols
+          </Badge>
+          <Badge variant="secondary" className="gap-1 px-3 py-1 text-sm">
+            <Activity className="h-3 w-3" />
+            Live data
+          </Badge>
+        </div>
+        <div className="w-full md:w-64">
+          <Input
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder="Filter symbol"
+            className="uppercase"
+            data-testid="input-filter-symbols"
+          />
+        </div>
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Quote Timeline</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Showing {events.length} most recent ticks published by the backend.
-            </p>
-          </div>
-          <Badge variant="outline" className="gap-1 px-3 py-1 text-sm">
-            <AlertTriangle className="h-3 w-3" />
-            Monitor rate limits
-          </Badge>
-        </CardHeader>
-        <CardContent className="space-y-0">
-          {events.length === 0 ? (
-            <div className="py-12 text-center text-muted-foreground text-sm">
-              Waiting for the first event… start the backend publisher to populate diagnostics.
-            </div>
-          ) : (
-            <div className="max-h-[420px] overflow-y-auto">
-              {events.map((event, index) => {
-                const priceText = formatPrice(event.price);
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {filteredSymbols.map((symbol) => {
+          const data = history[symbol] ?? [];
+          const sample = data.slice(-60);
+          const latest = sample.at(-1);
+          const high = sample.reduce((acc, item) => Math.max(acc, item.price), Number.NEGATIVE_INFINITY);
+          const low = sample.reduce((acc, item) => Math.min(acc, item.price), Number.POSITIVE_INFINITY);
+          const average =
+            sample.length > 0 ? sample.reduce((sum, item) => sum + item.price, 0) / sample.length : null;
 
-                return (
-                  <div
-                    key={`${event.symbol}-${event.timestamp}-${index}`}
-                    className="flex items-start gap-3 px-4 py-3 hover:bg-muted/40"
-                    data-testid={`diagnostic-event-${index}`}
-                  >
-                    <div className="mt-1 h-2 w-2 rounded-full bg-primary" />
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-semibold font-mono">{event.symbol}</span>
-                        <span className="text-xs text-muted-foreground">{new Date(event.timestamp).toLocaleTimeString()}</span>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-3 text-xs">
-                        <span className="font-mono text-sm">{priceText}</span>
-                        <Separator orientation="vertical" className="h-3" />
-                        <span>Volume {event.volume.toLocaleString()}</span>
-                        <Separator orientation="vertical" className="h-3" />
-                        <span>{formatRelativeTime(event.timestamp)}</span>
-                      </div>
-                    </div>
+          return (
+            <Card key={symbol} className="flex flex-col" data-testid={`card-stream-${symbol}`}>
+              <CardHeader className="space-y-0 pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+                    <span className="font-mono">{symbol}</span>
+                    <Badge variant="outline" className="gap-1 px-2 py-0">
+                      <BarChart3 className="h-3 w-3" />
+                      {sample.length}
+                    </Badge>
+                  </CardTitle>
+                  <span className="text-xs text-muted-foreground">
+                    {formatRelativeTime(latest?.timestamp)}
+                  </span>
+                </div>
+              </CardHeader>
+              <CardContent className="flex-1 space-y-4">
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Last</p>
+                    <p className="font-mono font-semibold text-lg">{formatPrice(latest?.price)}</p>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  <div>
+                    <p className="text-muted-foreground">High</p>
+                    <p className="font-mono font-semibold">{formatPrice(high === Number.NEGATIVE_INFINITY ? null : high)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Low</p>
+                    <p className="font-mono font-semibold">{formatPrice(low === Number.POSITIVE_INFINITY ? null : low)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Average</p>
+                    <p className="font-mono font-semibold">{formatPrice(average)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Volume</p>
+                    <p className="font-mono font-semibold">{latest?.volume?.toLocaleString() ?? "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Samples</p>
+                    <p className="font-semibold">{sample.length}</p>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="h-28">
+                  {sample.length > 1 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={sample}>
+                        <defs>
+                          <linearGradient id={`gradient-${symbol}`} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4} />
+                            <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="timestamp" hide />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "hsl(var(--popover))",
+                            border: "1px solid hsl(var(--border))",
+                            borderRadius: "0.5rem",
+                          }}
+                          formatter={(value: number) => formatPrice(value)}
+                          labelFormatter={(value: string) => new Date(value).toLocaleTimeString()}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="price"
+                          stroke="hsl(var(--primary))"
+                          fill={`url(#gradient-${symbol})`}
+                          strokeWidth={2}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+                      Not enough ticks to render a sparkline yet.
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+        {filteredSymbols.length === 0 && (
+          <Card>
+            <CardContent className="py-12 text-center text-muted-foreground">
+              No symbols match that filter yet. Start streaming data from the backend to populate this view.
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }

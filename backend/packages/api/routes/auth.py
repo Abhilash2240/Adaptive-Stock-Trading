@@ -35,11 +35,11 @@ async def register(
     """Register a new user account."""
     try:
         # Create user account
-        user = create_user_account(user_data.username, user_data.password)
+        user = await create_user_account(user_data.username, user_data.password)
         
         # Log successful registration
         client_ip = getattr(request.client, 'host', 'unknown') if request.client else 'unknown'
-        audit_logger.log_auth_attempt(user_data.username, True, client_ip)
+        await audit_logger.log_auth_attempt(user_data.username, True, client_ip)
         
         # Create JWT token
         jwt_manager = JWTManager(settings)
@@ -61,12 +61,12 @@ async def register(
     except HTTPException:
         # Log failed registration attempt
         client_ip = getattr(request.client, 'host', 'unknown') if request.client else 'unknown'
-        audit_logger.log_auth_attempt(user_data.username, False, client_ip)
+        await audit_logger.log_auth_attempt(user_data.username, False, client_ip)
         raise
     except Exception as e:
         # Log failed registration attempt
         client_ip = getattr(request.client, 'host', 'unknown') if request.client else 'unknown'
-        audit_logger.log_auth_attempt(user_data.username, False, client_ip)
+        await audit_logger.log_auth_attempt(user_data.username, False, client_ip)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Registration failed"
@@ -84,17 +84,17 @@ async def login(
     
     try:
         # Authenticate user
-        user = authenticate_user(user_credentials.username, user_credentials.password)
+        user = await authenticate_user(user_credentials.username, user_credentials.password)
         
         if not user:
-            audit_logger.log_auth_attempt(user_credentials.username, False, client_ip)
+            await audit_logger.log_auth_attempt(user_credentials.username, False, client_ip)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect username or password"
             )
         
         # Log successful login
-        audit_logger.log_auth_attempt(user_credentials.username, True, client_ip)
+        await audit_logger.log_auth_attempt(user_credentials.username, True, client_ip)
         
         # Create JWT token
         jwt_manager = JWTManager(settings)
@@ -111,7 +111,7 @@ async def login(
     except HTTPException:
         raise
     except Exception as e:
-        audit_logger.log_auth_attempt(user_credentials.username, False, client_ip)
+        await audit_logger.log_auth_attempt(user_credentials.username, False, client_ip)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Login failed"
