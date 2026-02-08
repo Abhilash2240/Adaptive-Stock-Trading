@@ -32,10 +32,10 @@ limiter = Limiter(key_func=get_remote_address)
 # JWT Secret key management
 def get_jwt_secret(settings: Settings) -> str:
     """Get JWT secret from environment or generate a secure one."""
-    if hasattr(settings, 'jwt_secret') and settings.jwt_secret:
-        return settings.jwt_secret
+    if hasattr(settings, 'jwt_secret_key') and settings.jwt_secret_key:
+        return settings.jwt_secret_key
     # Generate a secure secret if not provided (not recommended for production)
-    print("⚠️  WARNING: JWT_SECRET not set in environment. Using generated secret.")
+    print("⚠️  WARNING: JWT_SECRET_KEY not set in environment. Using generated secret.")
     print("⚠️  This is NOT secure for production use!")
     return secrets.token_urlsafe(64)
 
@@ -100,8 +100,8 @@ class JWTManager:
     
     def __init__(self, settings: Settings):
         self.secret_key = get_jwt_secret(settings)
-        self.algorithm = ALGORITHM
-        self.expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES
+        self.algorithm = settings.jwt_algorithm
+        self.expire_minutes = settings.jwt_access_token_expire_minutes
     
     def create_access_token(self, data: dict) -> str:
         """Create a new JWT access token."""
@@ -174,16 +174,52 @@ class UserStore:
             is_active=user_data["is_active"]
         )
     
-    def get_user_by_username(self, username: str) -> dict | None:
+    def get_user_by_username(self, username: str) -> User | None:
         """Get user by username."""
         for user_data in self._users.values():
             if user_data["username"] == username:
-                return user_data
+                return User(
+                    id=user_data["id"],
+                    username=user_data["username"],
+                    created_at=user_data["created_at"],
+                    is_active=user_data["is_active"]
+                )
         return None
     
-    def get_user_by_id(self, user_id: str) -> dict | None:
+    def get_user_by_id(self, user_id: str) -> User | None:
         """Get user by ID."""
-        return self._users.get(user_id)
+        user_data = self._users.get(user_id)
+        if user_data:
+            return User(
+                id=user_data["id"],
+                username=user_data["username"],
+                created_at=user_data["created_at"],
+                is_active=user_data["is_active"]
+            )
+        return None
+    
+    def authenticate_user(self, username: str, password: str) -> User | None:
+        """Authenticate user with username and password."""
+        # Find user data
+        user_data = None
+        for uid, data in self._users.items():
+            if data["username"] == username:
+                user_data = data
+                break
+        
+        if not user_data:
+            return None
+        
+        # Verify password
+        if not password_manager.verify_password(password, user_data["password_hash"]):
+            return None
+        
+        return User(
+            id=user_data["id"],
+            username=user_data["username"],
+            created_at=user_data["created_at"],
+            is_active=user_data["is_active"]
+        )
 
 # Global instances
 user_store = UserStore()
@@ -331,19 +367,7 @@ audit_logger = AuditLogger()
 # Utility functions for authentication
 def authenticate_user(username: str, password: str) -> User | None:
     """Authenticate user with username and password."""
-    user_data = user_store.get_user_by_username(username)
-    if not user_data:
-        return None
-    
-    if not password_manager.verify_password(password, user_data["password_hash"]):
-        return None
-    
-    return User(
-        id=user_data["id"],
-        username=user_data["username"],
-        created_at=user_data["created_at"],
-        is_active=user_data["is_active"]
-    )
+    return user_store.authenticate_user(username, password)
 
 def create_user_account(username: str, password: str) -> User:
     """Create a new user account."""
