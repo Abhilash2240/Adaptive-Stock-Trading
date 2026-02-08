@@ -15,7 +15,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend source
 COPY backend/ ./backend/
-COPY model.py ./model.py
 
 # The run_server.py entry point lives inside backend/
 WORKDIR /app/backend
