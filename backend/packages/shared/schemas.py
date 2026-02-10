@@ -5,13 +5,6 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, field_validator
 
 
-# ── Symbol is now a plain validated string so any ticker works ──
-# Legacy enum kept as a reference set (for mock provider defaults)
-class _LegacySymbol(str, Enum):
-    AAPL = "AAPL"
-    MSFT = "MSFT"
-    TSLA = "TSLA"
-
 # Type alias – any 1-10 uppercase ASCII string
 Symbol = Annotated[str, Field(min_length=1, max_length=10)]
 

@@ -119,9 +119,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const errBody = await response.json().catch(() => null);
         throw new Error(errBody?.detail || 'Registration failed');
       }
-      // Account created — return the username so login page can pre-fill it.
-      // We intentionally do NOT set token or user here.
       const data = await response.json();
+      // Auto-login: backend returns access_token on register
+      if (data.access_token) {
+        const accessToken = data.access_token;
+        localStorage.setItem('auth_token', accessToken);
+        setToken(accessToken);
+        const meRes = await fetch(resolveUrl('/api/v1/auth/me'), {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        });
+        if (meRes.ok) {
+          setUser(await meRes.json());
+        } else {
+          setUser({ id: data.user?.id ?? '', username, created_at: new Date().toISOString(), is_active: true });
+        }
+      }
       return data.user?.username ?? username;
     } catch (error) {
       console.error('Registration failed:', error);

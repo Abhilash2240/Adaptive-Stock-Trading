@@ -2,7 +2,7 @@
 # Excludes torch, firebase, GCP, polygon, redis (unused at runtime)
 
 fastapi==0.121.1
-uvicorn[standard]==0.32.0
+uvicorn[standard]==0.34.3
 pydantic~=2.9
 pydantic-settings==2.6.1
 sqlmodel==0.0.22

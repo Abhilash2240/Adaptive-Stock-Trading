@@ -12,8 +12,8 @@ interface WebSocketStatusProps {
   reconnectAttempt?: number;
 }
 
-export function WebSocketStatus({ 
-  status = "disconnected", 
+export function WebSocketStatus({
+  status = "disconnected",
   latency = 0,
   lastMessage,
   reconnectAttempt = 0,
@@ -30,23 +30,26 @@ export function WebSocketStatus({
       case "connected":
         return {
           icon: Wifi,
-          variant: "default" as const,
           label: "Connected",
-          className: "animate-pulse",
+          badgeClass:
+            "bg-accent/15 text-accent border-accent/30 hover:bg-accent/20",
+          iconClass: "animate-pulse-glow",
         };
       case "reconnecting":
         return {
           icon: RefreshCw,
-          variant: "secondary" as const,
           label: "Reconnecting",
-          className: "animate-spin",
+          badgeClass:
+            "bg-muted text-muted-foreground border-border hover:bg-muted/80",
+          iconClass: "animate-spin",
         };
       default:
         return {
           icon: WifiOff,
-          variant: "destructive" as const,
           label: "Disconnected",
-          className: "",
+          badgeClass:
+            "bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/20",
+          iconClass: "",
         };
     }
   };
@@ -56,7 +59,9 @@ export function WebSocketStatus({
 
   const getTimeSinceLastMessage = () => {
     if (!lastMessage) return "Never";
-    const seconds = Math.floor((currentTime.getTime() - lastMessage.getTime()) / 1000);
+    const seconds = Math.floor(
+      (currentTime.getTime() - lastMessage.getTime()) / 1000,
+    );
     if (seconds < 60) return `${seconds}s ago`;
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes}m ago`;
@@ -66,18 +71,21 @@ export function WebSocketStatus({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Badge 
-          variant={config.variant} 
-          className="gap-1 cursor-pointer"
+        <Badge
+          variant="outline"
+          className={`gap-1.5 cursor-pointer ${config.badgeClass}`}
           data-testid={`badge-websocket-${status}`}
         >
-          <StatusIcon className={`h-3 w-3 ${config.className}`} />
+          <StatusIcon className={`h-3 w-3 ${config.iconClass}`} />
           <span className="hidden sm:inline">{config.label}</span>
+          {status === "connected" && latency > 0 && (
+            <span className="text-[10px] opacity-70">{latency}ms</span>
+          )}
         </Badge>
       </TooltipTrigger>
       <TooltipContent data-testid="tooltip-websocket-status">
         <div className="text-xs space-y-1">
-          <p className="font-semibold">WebSocket Status: {config.label}</p>
+          <p className="font-semibold">WebSocket: {config.label}</p>
           {status === "connected" && (
             <>
               <p>Latency: {latency}ms</p>

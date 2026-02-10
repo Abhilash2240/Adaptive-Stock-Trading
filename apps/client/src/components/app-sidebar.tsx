@@ -3,7 +3,6 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -14,20 +13,15 @@ import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard,
   Activity,
-  AlertTriangle,
-  Briefcase,
-  LineChart,
-  Cpu,
-  TrendingUp,
+  Stethoscope,
   Settings,
-  FileText,
+  TrendingUp,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 
 const menuItems = [
   {
     title: "Dashboard",
-    url: "/",
+    url: "/dashboard",
     icon: LayoutDashboard,
   },
   {
@@ -38,37 +32,12 @@ const menuItems = [
   {
     title: "Diagnostics",
     url: "/diagnostics",
-    icon: AlertTriangle,
-  },
-  {
-    title: "Portfolio",
-    url: "/portfolio",
-    icon: Briefcase,
-  },
-  {
-    title: "Backtest & Experiments",
-    url: "/backtest",
-    icon: LineChart,
-  },
-  {
-    title: "Training Control",
-    url: "/training",
-    icon: Cpu,
-  },
-  {
-    title: "Paper Trading",
-    url: "/paper-trading",
-    icon: TrendingUp,
+    icon: Stethoscope,
   },
   {
     title: "Settings",
     url: "/settings",
     icon: Settings,
-  },
-  {
-    title: "Logs",
-    url: "/logs",
-    icon: FileText,
   },
 ];
 
@@ -76,37 +45,32 @@ export function AppSidebar() {
   const [location] = useLocation();
 
   return (
-    <Sidebar data-testid="sidebar-main">
+    <Sidebar>
       <SidebarHeader className="p-6">
         <div className="flex items-center gap-2">
-          <Activity className="h-6 w-6 text-primary" data-testid="logo-icon" />
-          <div>
-            <h2 className="text-lg font-bold tracking-tight" data-testid="text-app-name">
-              RL Trader
-            </h2>
-            <p className="text-xs text-muted-foreground" data-testid="text-app-subtitle">
-              Deep Reinforcement Learning
-            </p>
-          </div>
+          <TrendingUp className="h-5 w-5 text-primary" />
+          <span className="text-lg font-bold tracking-tight text-primary">
+            AST
+          </span>
         </div>
       </SidebarHeader>
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-xs uppercase tracking-wide" data-testid="text-navigation-label">
-            Navigation
-          </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => {
                 const isActive = location === item.url;
                 return (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton 
-                      asChild 
+                    <SidebarMenuButton
+                      asChild
                       data-active={isActive}
-                      data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, '-')}`}
-                      className={isActive ? 'bg-sidebar-accent border-l-4 border-l-primary' : ''}
+                      className={
+                        isActive
+                          ? "text-accent-foreground border-l-2 border-l-accent"
+                          : ""
+                      }
                     >
                       <Link href={item.url}>
                         <item.icon className="h-4 w-4" />
@@ -122,9 +86,9 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="p-4">
-        <Badge variant="secondary" className="justify-center" data-testid="badge-version">
-          v1.0.0-MVP
-        </Badge>
+        <span className="text-xs text-muted-foreground text-center">
+          v1.0.0
+        </span>
       </SidebarFooter>
     </Sidebar>
   );

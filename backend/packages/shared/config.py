@@ -17,13 +17,10 @@ for candidate in [_BACKEND_DIR / ".env", _PROJECT_ROOT / ".env", Path(".env")]:
 class Settings(BaseSettings):
     environment: str = "development"
     database_url: str = ""
-    polygon_api_key: str = ""
     twelvedata_api_key: str = ""
-    data_provider: str = "twelvedata"  # twelvedata | polygon | mock
+    data_provider: str = "twelvedata"
     symbols: str = "AAPL,MSFT,TSLA"
-    mock_stream_interval: float = 1.0
-    polygon_poll_interval: float = 1.0
-    twelvedata_poll_interval: float = 5.0  # free tier: 8 req/min
+    twelvedata_poll_interval: float = 60.0  # free tier: 8 credits/min
     firebase_project_id: str = ""
     firebase_auth_audience: str = ""
     pubsub_topic: str | None = None

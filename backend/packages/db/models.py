@@ -55,7 +55,7 @@ class UserSettingsDB(SQLModel, table=True):
     id: str = Field(default_factory=new_uuid, primary_key=True)
     user_id: str = Field(foreign_key="users.id", unique=True, index=True)
     trading_mode: str = Field(default="paper")  # paper | live
-    market_data_provider: str = Field(default="mock")  # mock | polygon
+    market_data_provider: str = Field(default="twelvedata")
     notifications_enabled: bool = Field(default=True)
     theme: str = Field(default="light")
     updated_at: datetime = Field(

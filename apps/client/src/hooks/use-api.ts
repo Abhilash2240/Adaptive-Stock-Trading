@@ -28,6 +28,12 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
 		},
 	});
 
+	if (response.status === 401) {
+		localStorage.removeItem("auth_token");
+		window.location.replace("/");
+		throw new Error("Session expired");
+	}
+
 	if (!response.ok) {
 		const message = (await response.text()) || `Request failed with status ${response.status}`;
 		throw new Error(message);

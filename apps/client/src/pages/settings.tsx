@@ -1,444 +1,249 @@
+import { useState } from "react";
+import { Settings, User, Palette, Database, LogOut, Sun, Moon, Monitor } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Eye, EyeOff, CheckCircle, AlertTriangle, Save } from "lucide-react";
-import { useState, useEffect } from "react";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { useSettings, useSaveSettings, type UserSettingsResponse, type SaveSettingsPayload } from "@/hooks/use-api";
-import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { useAuth } from "@/contexts/auth-context";
+import { useTheme } from "@/components/theme-provider";
 
-const auditLogs = [
-  { timestamp: "2024-01-15 14:32:18", user: "admin@example.com", action: "Changed to Paper Trading", ip: "192.168.1.100" },
-  { timestamp: "2024-01-10 09:15:42", user: "admin@example.com", action: "Enabled Gemini AI", ip: "192.168.1.100" },
-  { timestamp: "2024-01-05 16:28:33", user: "admin@example.com", action: "Updated API Keys", ip: "192.168.1.100" },
-];
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
-export default function Settings() {
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [showLiveConfirmation, setShowLiveConfirmation] = useState(false);
-  const [confirmations, setConfirmations] = useState({
-    realMoney: false,
-    responsibility: false,
-    risks: false,
-    testing: false,
-  });
+const WATCHED_SYMBOLS = ["AAPL", "MSFT", "TSLA", "GOOGL", "AMZN"] as const;
+const POLL_INTERVAL_SECONDS = 60;
+const DATA_PROVIDER = "Twelve Data";
 
-  // For MVP, use a demo user ID (in production, this would come from auth)
-  const demoUserId = "demo-user-1";
-  const { data: userSettings, isLoading } = useSettings(demoUserId);
-  const saveSettings = useSaveSettings();
-  const { toast } = useToast();
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-  const [tradingMode, setTradingMode] = useState<"paper" | "live">("paper");
-  const [geminiEnabled, setGeminiEnabled] = useState(true);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [marketDataProvider, setMarketDataProvider] = useState("yfinance");
+function formatDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
 
-  // Load settings from backend when available
-  useEffect(() => {
-    if (userSettings) {
-      setTradingMode(userSettings.tradingMode as "paper" | "live");
-      setGeminiEnabled(userSettings.geminiEnabled ?? true);
-      setNotificationsEnabled(userSettings.notificationsEnabled ?? true);
-      setMarketDataProvider(userSettings.marketDataProvider ?? "yfinance");
-    }
-  }, [userSettings]);
+// ---------------------------------------------------------------------------
+// Settings Page
+// ---------------------------------------------------------------------------
 
-  const handleTradingModeChange = (checked: boolean) => {
-    if (checked) {
-      setShowLiveConfirmation(true);
-    } else {
-      setTradingMode("paper");
-      handleSaveSettings({ tradingMode: "paper" });
-    }
-  };
+export default function SettingsPage() {
+  const { user, logout } = useAuth();
+  const { theme, setTheme } = useTheme();
 
-  const handleConfirmLiveTrading = () => {
-    const allConfirmed = Object.values(confirmations).every(v => v);
-    
-    if (!allConfirmed) {
-      toast({
-        title: "Confirmation Required",
-        description: "Please check all confirmation boxes before enabling live trading.",
-        variant: "destructive",
-      });
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
+
+  const handleLogout = () => {
+    if (!confirmingLogout) {
+      setConfirmingLogout(true);
       return;
     }
-
-    setTradingMode("live");
-    setShowLiveConfirmation(false);
-    setConfirmations({ realMoney: false, responsibility: false, risks: false, testing: false });
-    handleSaveSettings({ tradingMode: "live" });
+    logout();
   };
-
-  const handleSaveSettings = async (updates: Partial<UserSettingsResponse>) => {
-    try {
-      const base: SaveSettingsPayload = userSettings
-        ? { ...userSettings }
-        : {
-            userId: demoUserId,
-            tradingMode,
-            marketDataProvider,
-            geminiEnabled,
-            notificationsEnabled,
-          };
-
-      const payload: SaveSettingsPayload = {
-        ...base,
-        ...updates,
-      };
-
-      await saveSettings.mutateAsync(payload);
-      
-      toast({
-        title: "Settings Saved",
-        description: "Your settings have been updated successfully.",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to save settings",
-        variant: "destructive",
-      });
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-muted-foreground">Loading settings...</div>
-      </div>
-    );
-  }
 
   return (
-    <div className="space-y-8" data-testid="page-settings">
+    <div className="max-w-2xl mx-auto space-y-6" data-testid="page-settings">
+      {/* Page header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight" data-testid="text-page-title">
+        <h1
+          className="text-3xl font-bold tracking-tight flex items-center gap-2"
+          data-testid="text-page-title"
+        >
+          <Settings className="h-7 w-7" />
           Settings
         </h1>
         <p className="text-muted-foreground mt-1">
-          Configure API keys, trading mode, and system preferences
+          Account, appearance, and system configuration
         </p>
       </div>
 
-      {/* Trading Mode */}
-      <Card data-testid="card-trading-mode">
+      {/* ── 1. Account ──────────────────────────────────────────── */}
+      <Card
+        className="bg-card border rounded-xl shadow-sm animate-fade-in stagger-1"
+        data-testid="card-account"
+      >
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            Trading Mode
-            {tradingMode === "live" && (
-              <Badge variant="destructive" className="animate-pulse">
-                LIVE TRADING ENABLED
-              </Badge>
+            <User className="h-5 w-5" />
+            Account
+          </CardTitle>
+          <CardDescription>Your profile and account status</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Username</span>
+            <span className="font-medium">{user?.username ?? "---"}</span>
+          </div>
+          <Separator />
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Status</span>
+            {user?.is_active ? (
+              <Badge className="bg-accent text-accent-foreground">Active</Badge>
+            ) : (
+              <Badge variant="secondary">Inactive</Badge>
             )}
+          </div>
+          <Separator />
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Member since</span>
+            <span className="font-medium">
+              {user?.created_at ? formatDate(user.created_at) : "---"}
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── 2. Appearance ───────────────────────────────────────── */}
+      <Card
+        className="bg-card border rounded-xl shadow-sm animate-fade-in stagger-2"
+        data-testid="card-appearance"
+      >
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Palette className="h-5 w-5" />
+            Appearance
+          </CardTitle>
+          <CardDescription>Choose your preferred color theme</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              className={
+                theme === "light"
+                  ? "ring-2 ring-accent flex-1"
+                  : "flex-1"
+              }
+              onClick={() => setTheme("light")}
+              data-testid="button-theme-light"
+            >
+              <Sun className="h-4 w-4 mr-2" />
+              Light
+            </Button>
+            <Button
+              variant="outline"
+              className={
+                theme === "dark"
+                  ? "ring-2 ring-accent flex-1"
+                  : "flex-1"
+              }
+              onClick={() => setTheme("dark")}
+              data-testid="button-theme-dark"
+            >
+              <Moon className="h-4 w-4 mr-2" />
+              Dark
+            </Button>
+            <Button
+              variant="outline"
+              className={
+                theme === "system"
+                  ? "ring-2 ring-accent flex-1"
+                  : "flex-1"
+              }
+              onClick={() => setTheme("system")}
+              data-testid="button-theme-system"
+            >
+              <Monitor className="h-4 w-4 mr-2" />
+              System
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── 3. Market Data ──────────────────────────────────────── */}
+      <Card
+        className="bg-card border rounded-xl shadow-sm animate-fade-in stagger-3"
+        data-testid="card-market-data"
+      >
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-5 w-5" />
+            Market Data
           </CardTitle>
           <CardDescription>
-            Control whether the system operates in paper trading (simulation) or live trading mode
+            Current data feed configuration (read-only)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-4 border rounded-lg">
-            <div className="space-y-1">
-              <div className="font-semibold">Enable Live Trading</div>
-              <div className="text-sm text-muted-foreground">
-                Switch from paper trading to real money trading
-              </div>
-            </div>
-            <Switch
-              checked={tradingMode === "live"}
-              onCheckedChange={handleTradingModeChange}
-              data-testid="switch-trading-mode"
-            />
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Provider</span>
+            <span className="font-medium">{DATA_PROVIDER}</span>
           </div>
-
-          {tradingMode === "paper" && (
-            <div className="bg-muted/50 p-4 rounded-lg flex items-start gap-3">
-              <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5" />
-              <div>
-                <div className="font-semibold text-sm">Paper Trading Mode Active</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  You're using simulated funds. No real money is at risk.
-                </div>
-              </div>
+          <Separator />
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Poll interval</span>
+            <span className="font-medium">{POLL_INTERVAL_SECONDS}s</span>
+          </div>
+          <Separator />
+          <div className="space-y-2">
+            <span className="text-sm text-muted-foreground">Watched symbols</span>
+            <div className="flex flex-wrap gap-2">
+              {WATCHED_SYMBOLS.map((symbol) => (
+                <Badge key={symbol} variant="secondary">
+                  {symbol}
+                </Badge>
+              ))}
             </div>
-          )}
-
-          {tradingMode === "live" && (
-            <div className="bg-destructive/10 border border-destructive p-4 rounded-lg flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 text-destructive mt-0.5" />
-              <div>
-                <div className="font-semibold text-sm text-destructive">LIVE TRADING ACTIVE</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Real money is at risk. All trades will be executed with real funds.
-                </div>
-              </div>
-            </div>
-          )}
-
-          <Dialog open={showLiveConfirmation} onOpenChange={setShowLiveConfirmation}>
-            <DialogContent data-testid="dialog-live-trading-confirmation">
-              <DialogHeader>
-                <DialogTitle className="text-destructive">⚠️ Enable Live Trading?</DialogTitle>
-                <DialogDescription className="space-y-4 pt-4">
-                  <p>
-                    You are about to enable LIVE TRADING mode. This means all trades will be executed with real money through your connected broker account.
-                  </p>
-                  <p className="font-semibold">
-                    Please confirm you understand the following:
-                  </p>
-                  <div className="space-y-3">
-                    <label className="flex items-start gap-3">
-                      <Checkbox 
-                        checked={confirmations.realMoney}
-                        onCheckedChange={(checked) => setConfirmations(prev => ({ ...prev, realMoney: !!checked }))}
-                        data-testid="checkbox-real-money" 
-                      />
-                      <span className="text-sm">
-                        I understand this involves real money and I can lose some or all of my investment
-                      </span>
-                    </label>
-                    <label className="flex items-start gap-3">
-                      <Checkbox 
-                        checked={confirmations.responsibility}
-                        onCheckedChange={(checked) => setConfirmations(prev => ({ ...prev, responsibility: !!checked }))}
-                        data-testid="checkbox-responsibility" 
-                      />
-                      <span className="text-sm">
-                        I accept full responsibility for all trading decisions and outcomes
-                      </span>
-                    </label>
-                    <label className="flex items-start gap-3">
-                      <Checkbox 
-                        checked={confirmations.risks}
-                        onCheckedChange={(checked) => setConfirmations(prev => ({ ...prev, risks: !!checked }))}
-                        data-testid="checkbox-risks" 
-                      />
-                      <span className="text-sm">
-                        I have read and understood the risks associated with algorithmic trading
-                      </span>
-                    </label>
-                    <label className="flex items-start gap-3">
-                      <Checkbox 
-                        checked={confirmations.testing}
-                        onCheckedChange={(checked) => setConfirmations(prev => ({ ...prev, testing: !!checked }))}
-                        data-testid="checkbox-testing" 
-                      />
-                      <span className="text-sm">
-                        I have thoroughly tested this strategy in paper trading mode
-                      </span>
-                    </label>
-                  </div>
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setShowLiveConfirmation(false);
-                    setConfirmations({ realMoney: false, responsibility: false, risks: false, testing: false });
-                  }}
-                  data-testid="button-cancel-live"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={handleConfirmLiveTrading}
-                  data-testid="button-confirm-live"
-                >
-                  Enable Live Trading
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          </div>
         </CardContent>
       </Card>
 
-      {/* API Keys */}
-      <Card data-testid="card-api-keys">
+      {/* ── 4. Session ──────────────────────────────────────────── */}
+      <Card
+        className="bg-card border rounded-xl shadow-sm animate-fade-in stagger-4"
+        data-testid="card-session"
+      >
         <CardHeader>
-          <CardTitle>API Keys</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <LogOut className="h-5 w-5" />
+            Session
+          </CardTitle>
           <CardDescription>
-            Manage API keys for market data providers and AI services
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="gemini-key">Gemini API Key</Label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Input
-                  id="gemini-key"
-                  type={showApiKey ? "text" : "password"}
-                  defaultValue="AIza...xyz123"
-                  className="font-mono pr-10"
-                  data-testid="input-gemini-key"
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-0 top-0"
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  data-testid="button-toggle-key-visibility"
-                >
-                  {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </Button>
-              </div>
-              <Button variant="outline" data-testid="button-test-gemini">
-                Test Connection
-              </Button>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Last verified: <span className="font-mono">2024-01-15 14:32:18</span>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="market-data-provider">Market Data Provider</Label>
-            <Select value={marketDataProvider} onValueChange={setMarketDataProvider}>
-              <SelectTrigger id="market-data-provider" data-testid="select-market-data-provider">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="yfinance">Yahoo Finance (Free)</SelectItem>
-                <SelectItem value="iex">IEX Cloud</SelectItem>
-                <SelectItem value="polygon">Polygon.io</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="market-data-key">Market Data API Key</Label>
-            <Input
-              id="market-data-key"
-              type="password"
-              placeholder="Optional for Yahoo Finance"
-              className="font-mono"
-              data-testid="input-market-data-key"
-            />
-          </div>
-
-          <Button 
-            onClick={() => handleSaveSettings({ marketDataProvider })}
-            data-testid="button-save-api-keys"
-            disabled={saveSettings.isPending}
-          >
-            <Save className="h-4 w-4 mr-2" />
-            {saveSettings.isPending ? "Saving..." : "Save API Keys"}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* System Preferences */}
-      <Card data-testid="card-preferences">
-        <CardHeader>
-          <CardTitle>System Preferences</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="font-medium">Enable Gemini Sentiment Analysis</div>
-              <div className="text-sm text-muted-foreground">
-                Use AI to analyze market sentiment from news and social media
-              </div>
-            </div>
-            <Switch 
-              checked={geminiEnabled}
-              onCheckedChange={(checked) => {
-                setGeminiEnabled(checked);
-                handleSaveSettings({ geminiEnabled: checked });
-              }}
-              data-testid="switch-gemini-sentiment" 
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="font-medium">Real-time Notifications</div>
-              <div className="text-sm text-muted-foreground">
-                Receive alerts for trade executions and model updates
-              </div>
-            </div>
-            <Switch 
-              checked={notificationsEnabled}
-              onCheckedChange={(checked) => {
-                setNotificationsEnabled(checked);
-                handleSaveSettings({ notificationsEnabled: checked });
-              }}
-              data-testid="switch-notifications" 
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="font-medium">Dark Mode</div>
-              <div className="text-sm text-muted-foreground">
-                Switch between light and dark theme
-              </div>
-            </div>
-            <Switch data-testid="switch-dark-mode" />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Audit Log */}
-      <Card data-testid="card-audit-log">
-        <CardHeader>
-          <CardTitle>Audit Log</CardTitle>
-          <CardDescription>
-            Track all trading mode changes and system configuration updates
+            Sign out of your current session
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Timestamp</TableHead>
-                  <TableHead>User</TableHead>
-                  <TableHead>Action</TableHead>
-                  <TableHead>IP Address</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {auditLogs.map((log, idx) => (
-                  <TableRow key={idx} data-testid={`row-audit-${idx}`}>
-                    <TableCell className="font-mono text-sm">{log.timestamp}</TableCell>
-                    <TableCell>{log.user}</TableCell>
-                    <TableCell>{log.action}</TableCell>
-                    <TableCell className="font-mono text-sm">{log.ip}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          {confirmingLogout ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Are you sure you want to sign out?
+              </p>
+              <div className="flex gap-3">
+                <Button
+                  variant="destructive"
+                  onClick={handleLogout}
+                  data-testid="button-confirm-logout"
+                >
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Confirm Sign Out
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setConfirmingLogout(false)}
+                  data-testid="button-cancel-logout"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              variant="destructive"
+              onClick={handleLogout}
+              data-testid="button-logout"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Sign Out
+            </Button>
+          )}
         </CardContent>
       </Card>
     </div>

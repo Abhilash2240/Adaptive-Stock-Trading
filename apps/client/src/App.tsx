@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Switch, Route, useRoute, Link } from "wouter";
+import { Switch, Route, Redirect } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 
 import { queryClient } from "./lib/queryClient";
@@ -9,71 +9,19 @@ import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/s
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AppSidebar } from "@/components/app-sidebar";
-import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { WebSocketStatus } from "@/components/websocket-status";
-import { TradingModeBadge } from "@/components/trading-mode-badge";
 import { useQuoteStreamContext, QuoteStreamProvider } from "@/context/quote-stream-context";
-import { apiBaseUrl, useBackendReady } from "@/hooks/use-api";
+import { useBackendReady } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
+import { LogOut } from "lucide-react";
 import Dashboard from "@/pages/dashboard";
 import Streams from "@/pages/streams";
 import Diagnostics from "@/pages/diagnostics";
-import Portfolio from "@/pages/portfolio";
-import Backtest from "@/pages/backtest";
-import Training from "@/pages/training";
-import PaperTrading from "@/pages/paper-trading";
 import Settings from "@/pages/settings";
-import Logs from "@/pages/logs";
-import NotFound from "@/pages/not-found";
-import Login from "@/pages/login-new";
+import Login from "@/pages/login";
 
-function useApiHealth() {
-  const base = apiBaseUrl;
-  const target = `${base || ""}/api/status`;
-  const [status, setStatus] = useState<"ok" | "fail" | "checking">("checking");
-  const [error, setError] = useState<string>("");
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => {
-      controller.abort();
-      setStatus("fail");
-      setError("Timed out while contacting the backend health endpoint.");
-    }, 5000);
-
-    fetch(target, { signal: controller.signal })
-      .then((response) => (response.ok ? response.json() : Promise.reject(response)))
-      .then(() => {
-        window.clearTimeout(timeout);
-        setStatus("ok");
-        setError("");
-      })
-      .catch(async (reason) => {
-        if (controller.signal.aborted) {
-          return;
-        }
-        setStatus("fail");
-        if (reason instanceof Response) {
-          const message = await reason.text();
-          setError(message || `Health endpoint returned status ${reason.status}.`);
-        } else {
-          setError("Backend API not reachable. Is it running and accessible from this host?");
-        }
-      })
-      .finally(() => {
-        window.clearTimeout(timeout);
-      });
-
-    return () => {
-      window.clearTimeout(timeout);
-      controller.abort();
-    };
-  }, [target]);
-
-  return { status, error, target };
-}
-
+/* ─── Error Boundary ────────────────────────────────────────────── */
 class ErrorBoundary extends React.Component<
   React.PropsWithChildren,
   { hasError: boolean; error: Error | null }
@@ -82,50 +30,25 @@ class ErrorBoundary extends React.Component<
     super(props);
     this.state = { hasError: false, error: null };
   }
-
   static getDerivedStateFromError(error: Error) {
     return { hasError: true, error };
   }
-
   componentDidCatch(error: Error) {
     this.setState({ hasError: true, error });
   }
-
   render() {
     if (this.state.hasError) {
       return (
-        <div className="bg-red-100 text-red-800 border-b border-red-200 px-4 py-3 text-sm">
+        <div className="bg-destructive/10 text-destructive border-b border-destructive/20 px-4 py-3 text-sm">
           <span className="font-semibold">App Error:</span> {this.state.error?.message}
         </div>
       );
     }
-
     return this.props.children;
   }
 }
 
-function ApiBanner() {
-  const { status, error, target } = useApiHealth();
-
-  if (status === "ok") {
-    return null;
-  }
-
-  const message =
-    status === "checking"
-      ? "Checking backend connectivity…"
-      : error || "Backend API not reachable. Is it running?";
-
-  return (
-    <div className="bg-red-50 text-red-700 border-b border-red-100 px-4 py-3 text-sm text-center">
-      <span className="font-medium">{message}</span>
-      {status === "fail" && (
-        <span className="ml-2 text-xs opacity-75">({target})</span>
-      )}
-    </div>
-  );
-}
-
+/* ─── Router ────────────────────────────────────────────────────── */
 function AppRouter() {
   return (
     <Switch>
@@ -133,50 +56,38 @@ function AppRouter() {
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/streams" component={Streams} />
       <Route path="/diagnostics" component={Diagnostics} />
-      <Route path="/portfolio" component={Portfolio} />
-      <Route path="/backtest" component={Backtest} />
-      <Route path="/training" component={Training} />
-      <Route path="/paper-trading" component={PaperTrading} />
       <Route path="/settings" component={Settings} />
-      <Route path="/logs" component={Logs} />
-      <Route component={NotFound} />
+      <Route>
+        <Redirect to="/dashboard" />
+      </Route>
     </Switch>
   );
 }
 
-/** Authenticated shell — only rendered after login */
+/* ─── Authenticated Shell ───────────────────────────────────────── */
 function AuthenticatedShell() {
   const { status, latency, lastMessageAt, reconnectAttempt } = useQuoteStreamContext();
   const { logout, user } = useAuth();
+  const { data: backendReady, isLoading: isBackendLoading } = useBackendReady();
 
-  const {
-    data: backendReady,
-    isLoading: isBackendLoading,
-    isError: isBackendError,
-    error: backendError,
-  } = useBackendReady();
-
-  const provider = backendReady?.summary?.provider ?? "unknown";
-  const environment = backendReady?.summary?.environment ?? "development";
-
-  let backendStatusText = `${provider} • ${environment}`;
-  if (isBackendLoading) {
-    backendStatusText = "Checking backend…";
-  } else if (isBackendError) {
-    backendStatusText = backendError instanceof Error ? backendError.message : "Backend offline";
-  }
+  const provider = backendReady?.summary?.provider ?? "...";
+  const environment = backendReady?.summary?.environment ?? "";
 
   return (
     <div className="flex min-h-screen">
       <AppSidebar />
       <SidebarInset className="flex flex-1 flex-col">
-        <header className="flex h-16 items-center justify-between border-b px-4 lg:px-6">
+        <header className="flex h-14 items-center justify-between border-b border-border bg-card px-4 lg:px-6">
           <div className="flex items-center gap-3">
             <SidebarTrigger className="md:hidden" />
-            <div className="flex items-center gap-2">
-              <TradingModeBadge mode="paper" />
-              <span className="hidden text-sm text-muted-foreground sm:inline">{backendStatusText}</span>
-            </div>
+            <span className="hidden text-sm font-medium text-primary sm:inline">
+              Adaptive Stock Trading
+            </span>
+            {!isBackendLoading && (
+              <span className="hidden text-xs text-muted-foreground lg:inline">
+                {provider}{environment ? ` \u00B7 ${environment}` : ""}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <WebSocketStatus
@@ -187,11 +98,18 @@ function AuthenticatedShell() {
             />
             <ThemeToggle />
             <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                Welcome, {user?.username}
+              <span className="hidden text-sm text-muted-foreground sm:inline">
+                {user?.username}
               </span>
-              <Button size="sm" variant="outline" onClick={logout}>
-                Logout
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={logout}
+                className="gap-1.5 text-muted-foreground hover:text-foreground"
+                aria-label="Log out"
+              >
+                <LogOut className="h-4 w-4" />
+                <span className="hidden sm:inline">Logout</span>
               </Button>
             </div>
           </div>
@@ -204,7 +122,7 @@ function AuthenticatedShell() {
   );
 }
 
-/** Gate component — renders login OR the authenticated app */
+/* ─── Gate: login or app ────────────────────────────────────────── */
 function AppGate() {
   const { isAuthenticated, isLoading } = useAuth();
 
@@ -212,8 +130,8 @@ function AppGate() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center space-y-4">
-          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <div className="mx-auto h-10 w-10 rounded-full border-4 border-primary/20 border-t-primary animate-spinner" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
         </div>
       </div>
     );
@@ -224,8 +142,8 @@ function AppGate() {
   }
 
   const style = {
-    "--sidebar-width": "16rem",
-    "--sidebar-width-icon": "4rem",
+    "--sidebar-width": "15rem",
+    "--sidebar-width-icon": "3.5rem",
   };
 
   return (
@@ -233,18 +151,17 @@ function AppGate() {
       <QuoteStreamProvider>
         <AuthenticatedShell />
       </QuoteStreamProvider>
-      <DisclaimerBanner />
     </SidebarProvider>
   );
 }
 
+/* ─── Root ──────────────────────────────────────────────────────── */
 export default function App() {
   return (
     <ErrorBoundary>
-      <ApiBanner />
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <ThemeProvider defaultTheme="light" storageKey="rl-trader-theme">
+          <ThemeProvider defaultTheme="dark" storageKey="rl-trader-theme">
             <TooltipProvider>
               <AppGate />
               <Toaster />

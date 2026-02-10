@@ -1,369 +1,505 @@
-import { useEffect, useMemo, useState } from "react";
-import { Activity, Database, LineChart as LineChartIcon, RefreshCw, Wifi } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-	LineChart,
-	Line,
-	XAxis,
-	YAxis,
-	CartesianGrid,
-	Tooltip,
-	ResponsiveContainer,
-} from "recharts";
+  LayoutDashboard,
+  Wifi,
+  WifiOff,
+  Clock,
+  Bot,
+  Database,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  RefreshCw,
+} from "lucide-react";
+import { LineChart, Line, ResponsiveContainer } from "recharts";
 
 import { useQuoteStreamContext } from "@/context/quote-stream-context";
 import { useAgentStatus, useBackendReady } from "@/hooks/use-api";
-import { useToast } from "@/hooks/use-toast";
-import { MetricCard } from "@/components/metric-card";
+import { useStockQuote } from "@/hooks/use-stock-quote";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
-import { formatPrice, formatRelativeTime, titleCase } from "@/utils/formatters";
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
-export default function Dashboard() {
-	const { toast } = useToast();
-	const {
-		quotes,
-		history,
-		status: connectionStatus,
-		latency,
-		lastMessageAt,
-		subscribe,
-		isSubscribing,
-	} = useQuoteStreamContext();
-	const { data: backendReady } = useBackendReady();
-	const isAuthenticated = Boolean(localStorage.getItem("auth_token"));
-	const {
-		data: agentStatus,
-		refetch: refetchAgent,
-		isFetching: isAgentRefreshing,
-		isLoading: isAgentLoading,
-	} = useAgentStatus(isAuthenticated);
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
-	const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
-	const [symbolInput, setSymbolInput] = useState("");
+const DEFAULT_SYMBOLS = ["AAPL", "MSFT", "TSLA", "GOOGL", "AMZN"] as const;
+const POLL_MS = 60_000; // 60s REST poll — respects Twelve Data rate limits
+const FLASH_DURATION_MS = 2_000;
 
-	useEffect(() => {
-		if (!selectedSymbol && quotes.length > 0) {
-			setSelectedSymbol(quotes[0].symbol);
-		}
-	}, [quotes, selectedSymbol]);
+// ---------------------------------------------------------------------------
+// Formatting helpers
+// ---------------------------------------------------------------------------
 
-	const selectedHistory = useMemo(() => {
-		if (!selectedSymbol) {
-			return [];
-		}
-		return history[selectedSymbol] ?? [];
-	}, [history, selectedSymbol]);
-
-	const chartData = useMemo(
-		() =>
-			selectedHistory.map((item) => ({
-				time: new Date(item.timestamp).toLocaleTimeString([], {
-					hour: "2-digit",
-					minute: "2-digit",
-					second: "2-digit",
-				}),
-				price: item.price,
-			})),
-		[selectedHistory],
-	);
-
-	const currentQuote = useMemo(() => {
-		if (!selectedSymbol) {
-			return undefined;
-		}
-		return quotes.find((quote) => quote.symbol === selectedSymbol);
-	}, [quotes, selectedSymbol]);
-
-	const providerName = backendReady?.summary?.provider ?? "mock";
-	const environment = backendReady?.summary?.environment ?? "development";
-		const agentState = titleCase(agentStatus?.state ?? "idle");
-	const agentModel = agentStatus?.model_version ?? "unknown";
-	const agentUpdatedAt = agentStatus?.updated_at ?? null;
-
-	const connectionTrend = connectionStatus === "connected" ? "up" : connectionStatus === "reconnecting" ? "neutral" : "down";
-	const latencyTrend = latency !== null && latency <= 150 ? "up" : latency !== null ? "down" : "neutral";
-	const agentTrend = agentStatus?.state === "running" ? "up" : agentStatus?.state === "error" ? "down" : "neutral";
-
-	const handleSubscribe = async (event: React.FormEvent<HTMLFormElement>) => {
-		event.preventDefault();
-		const trimmed = symbolInput.trim().toUpperCase();
-		if (!trimmed) {
-			return;
-		}
-		try {
-			await subscribe(trimmed);
-			toast({
-				title: `Subscribed to ${trimmed}`,
-				description: "The backend will stream quotes for this symbol as data becomes available.",
-			});
-			setSelectedSymbol(trimmed);
-			setSymbolInput("");
-		} catch (error) {
-			const description = error instanceof Error ? error.message : "Unable to subscribe to the requested symbol.";
-			toast({
-				title: "Subscription failed",
-				description,
-				variant: "destructive",
-			});
-		}
-	};
-
-	return (
-		<div className="space-y-8" data-testid="page-dashboard">
-			<div className="flex flex-col gap-2">
-				<h1 className="text-3xl font-bold tracking-tight" data-testid="text-page-title">
-					Live Trading Overview
-				</h1>
-				<p className="text-muted-foreground" data-testid="text-page-subtitle">
-					Monitor streaming market data, backend health, and agent readiness in real time.
-				</p>
-			</div>
-
-			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-				<MetricCard
-					label="Connection"
-					value={connectionStatus.toUpperCase()}
-					icon={Wifi}
-					trend={connectionTrend}
-					testId="metric-connection"
-				/>
-				<MetricCard
-					label="Latency"
-					value={latency !== null ? `${Math.max(0, Math.round(latency))} ms` : "—"}
-					icon={LineChartIcon}
-					trend={latencyTrend}
-					changeLabel={latency !== null ? "avg message delay" : undefined}
-					testId="metric-latency"
-				/>
-				<MetricCard
-					label="Agent State"
-					value={agentState}
-					icon={Activity}
-					trend={agentTrend}
-					changeLabel={`Model ${agentModel}`}
-					testId="metric-agent"
-				/>
-				<MetricCard
-					label="Data Provider"
-					value={providerName.toUpperCase()}
-					icon={Database}
-					trend="neutral"
-					changeLabel={environment.toUpperCase()}
-					testId="metric-provider"
-				/>
-			</div>
-
-			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-				<Card className="lg:col-span-2">
-					<CardHeader className="flex flex-row items-center justify-between gap-4">
-						<div>
-							<CardTitle className="text-xl font-semibold">Price Stream</CardTitle>
-							<p className="text-sm text-muted-foreground">
-								{selectedSymbol ? `Last ${selectedHistory.length} ticks for ${selectedSymbol}` : "Select a symbol to view recent price action."}
-							</p>
-						</div>
-						{selectedSymbol && (
-							<Badge variant="outline" className="font-mono px-3 py-1 text-sm">
-								{selectedSymbol}
-							</Badge>
-						)}
-					</CardHeader>
-					<CardContent className="h-[320px]">
-						{chartData.length > 1 ? (
-							<ResponsiveContainer width="100%" height="100%">
-								<LineChart data={chartData}>
-									<CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-									<XAxis dataKey="time" tick={{ fontSize: 12 }} minTickGap={24} />
-									<YAxis tick={{ fontSize: 12 }} domain={["auto", "auto"]} />
-									<Tooltip
-										contentStyle={{
-											backgroundColor: "hsl(var(--popover))",
-											border: "1px solid hsl(var(--border))",
-											borderRadius: "0.5rem",
-										}}
-										formatter={(value: number) => `$${value.toFixed(2)}`}
-									/>
-									<Line type="monotone" dataKey="price" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
-								</LineChart>
-							</ResponsiveContainer>
-						) : (
-							<div className="h-full flex flex-col items-center justify-center text-muted-foreground text-sm">
-								<p>No recent ticks for the selected symbol yet.</p>
-								<p className="mt-2">Stream activity will appear here once the backend publishes data.</p>
-							</div>
-						)}
-					</CardContent>
-				</Card>
-
-				<Card className="space-y-4">
-					<CardHeader className="space-y-2">
-						<CardTitle className="text-xl font-semibold">Controls</CardTitle>
-						<p className="text-sm text-muted-foreground">
-							Subscribe to additional symbols and inspect the agent heartbeat.
-						</p>
-					</CardHeader>
-					<CardContent className="space-y-6">
-						<form className="space-y-3" onSubmit={handleSubscribe}>
-							<label className="text-sm font-medium" htmlFor="symbol-input">
-								Subscribe to symbol
-							</label>
-							<div className="flex gap-2">
-								<Input
-									id="symbol-input"
-									placeholder="e.g. AAPL"
-									value={symbolInput}
-									onChange={(event) => setSymbolInput(event.target.value.toUpperCase())}
-									maxLength={8}
-									className="uppercase"
-									autoComplete="off"
-									data-testid="input-subscribe-symbol"
-								/>
-								<Button type="submit" disabled={isSubscribing} data-testid="button-subscribe">
-									{isSubscribing ? "Subscribing…" : "Subscribe"}
-								</Button>
-							</div>
-							<p className="text-xs text-muted-foreground">
-								Symbols must be enabled server-side. The mock provider streams {"AAPL"}, {"MSFT"}, and {"TSLA"} by default.
-							</p>
-						</form>
-
-						<div className="border rounded-lg p-4 space-y-3 bg-muted/50">
-							<div className="flex items-center justify-between">
-								<div>
-									<p className="text-sm font-semibold">Agent heartbeat</p>
-									<p className="text-xs text-muted-foreground">
-										Updated {formatRelativeTime(agentUpdatedAt)}
-									</p>
-								</div>
-								<Button
-									size="icon"
-									variant="outline"
-									onClick={() => refetchAgent()}
-									disabled={isAgentRefreshing}
-									data-testid="button-refresh-agent"
-								>
-									<RefreshCw className={`h-4 w-4 ${isAgentRefreshing ? "animate-spin" : ""}`} />
-								</Button>
-							</div>
-							<div className="grid grid-cols-2 gap-3 text-sm">
-								<div>
-									<p className="text-muted-foreground">State</p>
-									<p className="font-semibold">{agentState}</p>
-								</div>
-								<div>
-									<p className="text-muted-foreground">Model</p>
-									<p className="font-semibold">{agentModel}</p>
-								</div>
-								<div>
-									<p className="text-muted-foreground">Connection</p>
-									<p className="font-semibold">{connectionStatus}</p>
-								</div>
-								<div>
-									<p className="text-muted-foreground">Last socket event</p>
-									<p className="font-semibold">{formatRelativeTime(lastMessageAt)}</p>
-								</div>
-							</div>
-							{isAgentLoading && <p className="text-xs text-muted-foreground">Fetching agent status…</p>}
-						</div>
-
-						<div className="rounded-lg border p-4 bg-muted/40">
-							<p className="text-xs text-muted-foreground leading-relaxed">
-								Tip: Run the FastAPI backend locally with <code className="font-mono text-[11px]">python -m backend.main</code> and
-								configure <code className="font-mono text-[11px]">VITE_API_BASE</code> / <code className="font-mono text-[11px]">VITE_WS_URL</code> to connect from the client.
-							</p>
-						</div>
-					</CardContent>
-				</Card>
-			</div>
-
-			<Card>
-				<CardHeader className="flex flex-row items-center justify-between">
-					<div>
-						<CardTitle>Active Streams</CardTitle>
-						<p className="text-sm text-muted-foreground">
-							Latest tick per symbol. Click a row to focus the chart.
-						</p>
-					</div>
-					<Badge variant="outline" className="px-3 py-1 font-medium">
-						{quotes.length} symbols
-					</Badge>
-				</CardHeader>
-				<CardContent className="overflow-x-auto">
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Symbol</TableHead>
-								<TableHead className="text-right">Last Price</TableHead>
-								<TableHead className="text-right">Δ (1 tick)</TableHead>
-								<TableHead className="text-right">Volume</TableHead>
-								<TableHead className="text-right">Updated</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{quotes.map((quote) => {
-								const rows = history[quote.symbol] ?? [];
-								const previousQuote = rows.length > 1 ? rows[rows.length - 2] : null;
-								const priceChange = previousQuote ? quote.price - previousQuote.price : null;
-								const priceChangePct = previousQuote && previousQuote.price !== 0 ? (priceChange! / previousQuote.price) * 100 : null;
-								const changeIsPositive = priceChange !== null && priceChange > 0;
-								const changeIsNegative = priceChange !== null && priceChange < 0;
-
-								return (
-									<TableRow
-										key={quote.symbol}
-										data-state={selectedSymbol === quote.symbol ? "selected" : undefined}
-										className="cursor-pointer"
-										onClick={() => setSelectedSymbol(quote.symbol)}
-										data-testid={`row-quote-${quote.symbol}`}
-									>
-										<TableCell>
-											<span className="font-mono font-semibold">{quote.symbol}</span>
-										</TableCell>
-										<TableCell className="text-right font-mono">{formatPrice(quote.price)}</TableCell>
-										<TableCell className="text-right">
-											{priceChange !== null ? (
-												<span
-													className={`font-mono text-sm ${
-														changeIsPositive ? "text-green-600 dark:text-green-400" : changeIsNegative ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
-													}`}
-												>
-													{priceChange > 0 ? "+" : ""}
-													{priceChange.toFixed(2)}
-													{priceChangePct !== null && ` (${priceChangePct > 0 ? "+" : ""}${priceChangePct.toFixed(2)}%)`}
-												</span>
-											) : (
-												<span className="text-muted-foreground">—</span>
-											)}
-										</TableCell>
-										<TableCell className="text-right font-mono text-sm">{quote.volume.toLocaleString()}</TableCell>
-										<TableCell className="text-right text-sm text-muted-foreground">
-											{formatRelativeTime(quote.timestamp)}
-										</TableCell>
-									</TableRow>
-								);
-							})}
-							{quotes.length === 0 && (
-								<TableRow>
-									<TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-10">
-										Waiting for the first quote from the backend…
-									</TableCell>
-								</TableRow>
-							)}
-						</TableBody>
-					</Table>
-				</CardContent>
-			</Card>
-		</div>
-	);
+function formatUsd(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "--";
+  return value.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
+function formatVolume(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "--";
+  return value.toLocaleString("en-US");
+}
+
+function formatChange(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "--";
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(2)}`;
+}
+
+function formatPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "--";
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(2)}%`;
+}
+
+// ---------------------------------------------------------------------------
+// StockRow — self-contained row with its own useStockQuote + tick flash
+// ---------------------------------------------------------------------------
+
+interface StockRowProps {
+  symbol: string;
+  sparklineData: Array<{ price: number }>;
+}
+
+function StockRow({ symbol, sparklineData }: StockRowProps) {
+  const { price, name, change, percentChange, volume, loading, error } =
+    useStockQuote(symbol, POLL_MS);
+
+  // ---- Price-change flash animation ----
+  const prevPriceRef = useRef<number | null>(null);
+  const [flashing, setFlashing] = useState(false);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (price === null) return;
+    if (prevPriceRef.current !== null && prevPriceRef.current !== price) {
+      setFlashing(true);
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = setTimeout(
+        () => setFlashing(false),
+        FLASH_DURATION_MS,
+      );
+    }
+    prevPriceRef.current = price;
+    return () => {
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    };
+  }, [price]);
+
+  // ---- Derived color / icon ----
+  const changeColor =
+    change != null
+      ? change > 0
+        ? "text-accent"
+        : change < 0
+          ? "text-destructive"
+          : "text-muted-foreground"
+      : "text-muted-foreground";
+
+  const TrendIcon =
+    change != null
+      ? change > 0
+        ? TrendingUp
+        : change < 0
+          ? TrendingDown
+          : Minus
+      : Minus;
+
+  // ---- Sparkline points ----
+  const chartPoints = useMemo(() => {
+    if (sparklineData.length > 1) return sparklineData;
+    if (price !== null) return [{ price }, { price }];
+    return [{ price: 0 }, { price: 0 }];
+  }, [sparklineData, price]);
+
+  const sparkColor =
+    change != null && change >= 0
+      ? "hsl(var(--accent))"
+      : "hsl(var(--destructive))";
+
+  // ---- Loading skeleton ----
+  if (loading && price === null) {
+    return (
+      <tr className="border-b border-border">
+        <td className="px-4 py-3">
+          <Skeleton className="h-5 w-16" />
+        </td>
+        <td className="px-4 py-3">
+          <Skeleton className="h-5 w-28" />
+        </td>
+        <td className="px-4 py-3 text-right">
+          <Skeleton className="h-5 w-20 ml-auto" />
+        </td>
+        <td className="px-4 py-3 text-right">
+          <Skeleton className="h-5 w-16 ml-auto" />
+        </td>
+        <td className="px-4 py-3 text-right">
+          <Skeleton className="h-5 w-16 ml-auto" />
+        </td>
+        <td className="px-4 py-3 text-right">
+          <Skeleton className="h-5 w-20 ml-auto" />
+        </td>
+        <td className="px-4 py-3">
+          <Skeleton className="h-8 w-24" />
+        </td>
+      </tr>
+    );
+  }
+
+  // ---- Error state ----
+  if (error && price === null) {
+    return (
+      <tr className="border-b border-border">
+        <td className="px-4 py-3 font-mono font-semibold text-foreground">
+          {symbol}
+        </td>
+        <td colSpan={6} className="px-4 py-3 text-sm text-destructive">
+          Error loading quote. Will retry in {POLL_MS / 1000}s.
+        </td>
+      </tr>
+    );
+  }
+
+  // ---- Normal row ----
+  return (
+    <tr
+      className={cn(
+        "border-b border-border transition-colors",
+        flashing && "animate-tick-flash",
+      )}
+    >
+      <td className="px-4 py-3">
+        <span className="font-mono font-semibold text-foreground">
+          {symbol}
+        </span>
+      </td>
+      <td className="px-4 py-3 text-sm text-muted-foreground">
+        {name ?? "--"}
+      </td>
+      <td className="px-4 py-3 text-right font-mono font-medium text-foreground">
+        {formatUsd(price)}
+      </td>
+      <td className={cn("px-4 py-3 text-right font-mono text-sm", changeColor)}>
+        <span className="inline-flex items-center gap-1">
+          <TrendIcon className="h-3.5 w-3.5" />
+          {formatChange(change)}
+        </span>
+      </td>
+      <td className={cn("px-4 py-3 text-right font-mono text-sm", changeColor)}>
+        {formatPercent(percentChange)}
+      </td>
+      <td className="px-4 py-3 text-right font-mono text-sm text-muted-foreground">
+        {formatVolume(volume)}
+      </td>
+      <td className="px-4 py-3">
+        <div className="h-8 w-24">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartPoints}>
+              <Line
+                type="monotone"
+                dataKey="price"
+                stroke={sparkColor}
+                strokeWidth={1.5}
+                dot={false}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — main page export
+// ---------------------------------------------------------------------------
+
+export default function Dashboard() {
+  // ---- Data sources ----
+  const {
+    status: connectionStatus,
+    isConnected,
+    latency,
+    history,
+    reconnectAttempt,
+    reconnect,
+  } = useQuoteStreamContext();
+
+  const {
+    data: backendData,
+    isLoading: backendLoading,
+    isError: backendError,
+  } = useBackendReady();
+
+  const { data: agentData, isLoading: agentLoading } = useAgentStatus();
+
+  // ---- Agent pulse on state change ----
+  const prevAgentStateRef = useRef<string | undefined>(undefined);
+  const [agentPulsing, setAgentPulsing] = useState(false);
+  const agentPulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!agentData?.state) return;
+    if (
+      prevAgentStateRef.current !== undefined &&
+      prevAgentStateRef.current !== agentData.state
+    ) {
+      setAgentPulsing(true);
+      if (agentPulseTimerRef.current)
+        clearTimeout(agentPulseTimerRef.current);
+      agentPulseTimerRef.current = setTimeout(
+        () => setAgentPulsing(false),
+        2_500,
+      );
+    }
+    prevAgentStateRef.current = agentData.state;
+    return () => {
+      if (agentPulseTimerRef.current)
+        clearTimeout(agentPulseTimerRef.current);
+    };
+  }, [agentData?.state]);
+
+  // ---- Derived values ----
+  const environment = backendData?.summary?.environment ?? "development";
+  const agentState = agentData?.state ?? "idle";
+  const agentModelVersion = agentData?.model_version ?? "--";
+
+  const connectionLabel =
+    connectionStatus === "connected"
+      ? "Connected"
+      : connectionStatus === "reconnecting"
+        ? "Reconnecting"
+        : "Disconnected";
+
+  const ConnectionIcon = isConnected ? Wifi : WifiOff;
+
+  // ---- Sparkline history map ----
+  const sparklineMap = useMemo(() => {
+    const map: Record<string, Array<{ price: number }>> = {};
+    for (const sym of DEFAULT_SYMBOLS) {
+      const symHistory = history[sym] ?? [];
+      map[sym] = symHistory.map((h) => ({ price: h.price }));
+    }
+    return map;
+  }, [history]);
+
+  // ---- Render ----
+  return (
+    <div className="space-y-8" data-testid="page-dashboard">
+      {/* ── Page Header ──────────────────────────────────────────── */}
+      <div className="flex items-center gap-3">
+        <LayoutDashboard className="h-7 w-7 text-foreground" />
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">
+          Dashboard
+        </h1>
+      </div>
+
+      {/* ── Status Cards ─────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Connection */}
+        <Card
+          className={cn(
+            "bg-card border rounded-xl shadow-sm hover-lift animate-fade-in stagger-1",
+            isConnected && "ring-1 ring-accent/40 animate-pulse-glow",
+          )}
+        >
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+              Connection
+            </CardTitle>
+            <ConnectionIcon
+              className={cn(
+                "h-4 w-4",
+                isConnected ? "text-accent" : "text-destructive",
+              )}
+            />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-mono font-bold tracking-tight text-foreground">
+              {connectionLabel}
+            </div>
+            {connectionStatus === "reconnecting" && reconnectAttempt > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Attempt {reconnectAttempt}
+              </p>
+            )}
+            {connectionStatus === "disconnected" && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-2 text-xs text-muted-foreground focus:ring-accent"
+                    onClick={reconnect}
+                  >
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                    Reconnect
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Attempt to reconnect WebSocket</TooltipContent>
+              </Tooltip>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Latency */}
+        <Card className="bg-card border rounded-xl shadow-sm hover-lift animate-fade-in stagger-2">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+              Latency
+            </CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-mono font-bold tracking-tight text-foreground">
+              {latency !== null ? `${Math.round(latency)} ms` : "--"}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {latency !== null
+                ? latency <= 100
+                  ? "Excellent"
+                  : latency <= 300
+                    ? "Normal"
+                    : "High"
+                : "No data"}
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Agent */}
+        <Card
+          className={cn(
+            "bg-card border rounded-xl shadow-sm hover-lift animate-fade-in stagger-3",
+            agentPulsing && "animate-pulse-glow",
+          )}
+        >
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+              Agent
+            </CardTitle>
+            <Bot
+              className={cn(
+                "h-4 w-4",
+                agentState === "running"
+                  ? "text-accent"
+                  : agentState === "error"
+                    ? "text-destructive"
+                    : "text-muted-foreground",
+              )}
+            />
+          </CardHeader>
+          <CardContent>
+            {agentLoading ? (
+              <Skeleton className="h-7 w-20" />
+            ) : (
+              <div className="text-2xl font-mono font-bold tracking-tight text-foreground capitalize">
+                {agentState}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground mt-1">
+              Model: {agentModelVersion}
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Provider */}
+        <Card className="bg-card border rounded-xl shadow-sm hover-lift animate-fade-in stagger-4">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+              Provider
+            </CardTitle>
+            <Database className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {backendLoading ? (
+              <Skeleton className="h-7 w-28" />
+            ) : backendError ? (
+              <div className="text-2xl font-mono font-bold tracking-tight text-destructive">
+                Offline
+              </div>
+            ) : (
+              <div className="text-2xl font-mono font-bold tracking-tight text-foreground">
+                Twelve Data
+              </div>
+            )}
+            <div className="flex items-center gap-2 mt-1">
+              <Badge variant="outline" className="text-xs">
+                {environment}
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Live Price Table ──────────────────────────────────────── */}
+      <Card className="bg-card border rounded-xl shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-xl font-semibold text-foreground">
+              Live Prices
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              REST-polled quotes for tracked symbols. Updates every 60 seconds.
+            </p>
+          </div>
+          <Badge variant="outline" className="font-mono px-3 py-1 text-sm">
+            {DEFAULT_SYMBOLS.length} symbols
+          </Badge>
+        </CardHeader>
+        <CardContent className="overflow-x-auto p-0">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/30">
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Symbol
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Name
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Price
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Change
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Change %
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Volume
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Sparkline
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {DEFAULT_SYMBOLS.map((sym) => (
+                <StockRow
+                  key={sym}
+                  symbol={sym}
+                  sparklineData={sparklineMap[sym] ?? []}
+                />
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

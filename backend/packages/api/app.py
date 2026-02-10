@@ -38,9 +38,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         from packages.db.engine import init_db, close_db
         await init_db()
-        print("✅ PostgreSQL database connected and tables ready.")
+        print("[OK] PostgreSQL database connected and tables ready.")
     except Exception as exc:
-        print(f"⚠️  Database init skipped: {exc}")
+        print(f"[WARN] Database init skipped: {exc}")
         print("   Set DATABASE_URL in .env to enable persistence.")
 
     provider = get_data_provider()
@@ -200,7 +200,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 }
             except Exception as exc:
                 raise HTTPException(status_code=502, detail=f"Twelve Data error: {exc}")
-        # Fallback for mock / polygon — no rich data available
         return {"symbol": sym, "price": 0, "provider": provider.name, "currency": "USD"}
 
     @app.get("/api/stocks")
@@ -259,26 +258,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         
         # WebSocket authentication - check for token in query params
         token = websocket.query_params.get("token")
-        if token:
-            try:
-                # Verify JWT token for WebSocket connection
-                from packages.shared.security import jwt_manager
-                payload = jwt_manager.verify_token(token)
-                user_id = payload.get("sub")
-                if not user_id:
-                    await websocket.close(code=4001, reason="Invalid authentication")
-                    return
-                    
-                await audit_logger.log_user_action(
-                    user_id=int(user_id),
-                    action="websocket_connect",
-                    details={"endpoint": endpoint}
-                )
-            except Exception as e:
-                await websocket.close(code=4001, reason="Authentication failed")
-                return
-        else:
+        if not token:
+            await websocket.accept()
             await websocket.close(code=4001, reason="Authentication required")
+            return
+
+        try:
+            # Verify JWT token for WebSocket connection
+            from packages.shared.security import jwt_manager
+            payload = jwt_manager.verify_token(token)
+            user_id = payload.get("sub")
+            if not user_id:
+                await websocket.accept()
+                await websocket.close(code=4001, reason="Invalid authentication")
+                return
+                
+            await audit_logger.log_user_action(
+                user_id=str(user_id),
+                action="websocket_connect",
+                details={"endpoint": endpoint}
+            )
+        except Exception as e:
+            await websocket.accept()
+            await websocket.close(code=4001, reason="Authentication failed")
             return
             
         await websocket.accept()

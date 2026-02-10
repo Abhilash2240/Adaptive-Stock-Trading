@@ -40,7 +40,7 @@ class TwelveDataProvider(BaseAsyncProvider):
             raise ValueError("Twelve Data API key is required")
         self._api_key = api_key
         self._symbols: set[str] = {s.upper() for s in (symbols or ["AAPL"])}
-        self._interval = max(interval, 3.0)  # respect rate-limits (8 req/min on free)
+        self._interval = max(interval, 60.0)  # free tier: 8 credits/min, 1 credit per symbol
         self._queue: asyncio.Queue[Quote] = asyncio.Queue()
         self._task: asyncio.Task[None] | None = None
         self._client: httpx.AsyncClient | None = None
