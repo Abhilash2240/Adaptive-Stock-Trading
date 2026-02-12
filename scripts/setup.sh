@@ -51,8 +51,15 @@ echo "Python dependencies setup:"
 if [ "$1" = "--with-backend" ] || [ "$1" = "-b" ]; then
     echo "Installing Python backend dependencies..."
     if command -v python3 &> /dev/null; then
-        pip3 install -r backend/requirements.txt --user
-        echo "✓ Backend dependencies installed"
+        # Check if we're in a virtual environment
+        if [ -n "$VIRTUAL_ENV" ]; then
+            pip3 install -r backend/requirements.txt
+            echo "✓ Backend dependencies installed in virtual environment"
+        else
+            pip3 install -r backend/requirements.txt --user
+            echo "✓ Backend dependencies installed (user-level)"
+            echo "ℹ Consider using a virtual environment for better isolation"
+        fi
     else
         echo "⚠ Python3 not found. Skipping backend dependencies."
     fi
@@ -65,7 +72,7 @@ else
     echo "Or with a virtual environment (recommended):"
     echo "  python3 -m venv .venv"
     echo "  source .venv/bin/activate      # On Linux/Mac"
-    echo "  .venv\\Scripts\\Activate.ps1      # On Windows"
+    echo "  .venv\Scripts\Activate.ps1      # On Windows"
     echo "  pip install -r backend/requirements.txt"
 fi
 
