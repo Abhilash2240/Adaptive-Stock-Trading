@@ -97,11 +97,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setUser({ id: '', username, created_at: new Date().toISOString(), is_active: true });
       }
+      // Only set loading to false after user is set to ensure smooth transition
+      setIsLoading(false);
     } catch (error) {
       console.error('Login failed:', error);
-      throw error;
-    } finally {
       setIsLoading(false);
+      throw error;
     }
   };
 
