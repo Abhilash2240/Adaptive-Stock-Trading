@@ -47,14 +47,27 @@ fi
 
 # Install Python dependencies (optional)
 echo ""
-echo "Python dependencies setup (optional):"
-echo "To install backend dependencies, run:"
-echo "  pip install -r backend/requirements.txt"
-echo "Or create a virtual environment:"
-echo "  python3 -m venv .venv"
-echo "  source .venv/bin/activate      # On Linux/Mac"
-echo "  .venv\\Scripts\\Activate.ps1      # On Windows"
-echo "  pip install -r backend/requirements.txt"
+echo "Python dependencies setup:"
+if [ "$1" = "--with-backend" ] || [ "$1" = "-b" ]; then
+    echo "Installing Python backend dependencies..."
+    if command -v python3 &> /dev/null; then
+        pip3 install -r backend/requirements.txt --user
+        echo "✓ Backend dependencies installed"
+    else
+        echo "⚠ Python3 not found. Skipping backend dependencies."
+    fi
+else
+    echo "ℹ Backend dependencies not installed (use --with-backend to install)"
+    echo ""
+    echo "To install backend dependencies manually:"
+    echo "  pip3 install -r backend/requirements.txt --user"
+    echo ""
+    echo "Or with a virtual environment (recommended):"
+    echo "  python3 -m venv .venv"
+    echo "  source .venv/bin/activate      # On Linux/Mac"
+    echo "  .venv\\Scripts\\Activate.ps1      # On Windows"
+    echo "  pip install -r backend/requirements.txt"
+fi
 
 echo ""
 echo "=== Setup Complete! ==="
@@ -65,4 +78,9 @@ echo ""
 echo "To start both frontend and backend:"
 echo "  npm run dev:full"
 echo ""
+echo "Note: Backend requires Python dependencies to be installed"
+echo "  Run: ./scripts/setup.sh --with-backend"
+echo "  Or:  pip3 install -r backend/requirements.txt --user"
+echo ""
 echo "The frontend will be available at: http://localhost:5173/"
+echo "The backend will be available at: http://localhost:8080/"
