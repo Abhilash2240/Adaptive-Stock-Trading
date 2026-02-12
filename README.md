@@ -33,7 +33,9 @@ On Windows you can also run `powershell -ExecutionPolicy Bypass -File scripts/st
 
 ## Troubleshooting
 
-If the frontend fails to start:
+**First, try the automated setup script (Option 1 above) if you haven't already!**
+
+If the frontend still fails to start:
 
 1. **Install dependencies**: Make sure you run `npm install` to install all required packages
 2. **Setup environment files**: Copy `apps/client/.env.example` to `apps/client/.env.local` and `backend/.env.example` to `backend/.env`

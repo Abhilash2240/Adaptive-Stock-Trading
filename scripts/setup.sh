@@ -2,6 +2,9 @@
 
 # Setup script for Adaptive Stock Trading platform
 # This script installs dependencies and creates environment files
+#
+# Usage: ./scripts/setup.sh
+# Note: If the script is not executable, run: chmod +x scripts/setup.sh
 
 set -e
 
@@ -12,6 +15,10 @@ echo ""
 echo "Checking Node.js version..."
 NODE_VERSION=$(node --version)
 echo "Node.js version: $NODE_VERSION"
+NODE_MAJOR=$(echo $NODE_VERSION | cut -d'.' -f1 | sed 's/v//')
+if [ "$NODE_MAJOR" -lt 18 ]; then
+    echo "⚠ Warning: Node.js v18 or higher is recommended. You have $NODE_VERSION"
+fi
 
 # Install npm dependencies
 echo ""
@@ -45,7 +52,8 @@ echo "To install backend dependencies, run:"
 echo "  pip install -r backend/requirements.txt"
 echo "Or create a virtual environment:"
 echo "  python3 -m venv .venv"
-echo "  source .venv/bin/activate"
+echo "  source .venv/bin/activate      # On Linux/Mac"
+echo "  .venv\\Scripts\\Activate.ps1      # On Windows"
 echo "  pip install -r backend/requirements.txt"
 
 echo ""
