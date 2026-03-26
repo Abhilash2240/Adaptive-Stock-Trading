@@ -1,0 +1,33 @@
+# render.yaml — Backend-only service on Render
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: adaptive-stock-trading-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile.backend
+    plan: free            # change to "starter" for no cold starts
+    healthCheckPath: /api/status
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PORT
+        value: "8001"
+      - key: DATA_PROVIDER
+        value: twelvedata
+      - key: TWELVEDATA_API_KEY
+        sync: false       # set manually in Render dashboard
+      - key: DATABASE_URL
+        sync: false       # set manually — Neon PostgreSQL connection string
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: SYMBOLS
+        value: AAPL,MSFT,TSLA,GOOGL,AMZN
+      - key: ALLOWED_ORIGINS
+        value: https://your-app.vercel.app,http://localhost:5173,http://localhost:3000
+      - key: RATE_LIMIT_ENABLED
+        value: "true"
+      - key: AUDIT_LOG_ENABLED
+        value: "true"
+      - key: TRUST_PROXY
+        value: "true"

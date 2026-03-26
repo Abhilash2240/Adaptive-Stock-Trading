@@ -1,0 +1,28 @@
+# ── Backend-only Dockerfile for Render / Railway / Fly.io ──
+# Runs the FastAPI + Python backend as a standalone service.
+
+FROM python:3.11-slim AS runtime
+WORKDIR /app
+
+# Install OS-level deps
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends build-essential && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy & install Python deps (production-slim list — no torch/firebase/GCP)
+COPY backend/requirements.prod.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy backend source
+COPY backend/ ./backend/
+
+# The run_server.py entry point lives inside backend/
+WORKDIR /app/backend
+
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8001
+
+EXPOSE 8001
+
+# Render sets $PORT at runtime; honour it with a fallback
+CMD ["sh", "-c", "python run_server.py"]

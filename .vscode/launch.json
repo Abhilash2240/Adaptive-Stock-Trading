@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Server (Node)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["tsx", "apps/server/index.ts"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": { "NODE_ENV": "development" }
+    },
+    {
+      "name": "Debug Python Agent",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/apps/server/py/agent_server.py",
+      "console": "integratedTerminal",
+      "env": { "AGENT_PORT": "9001" }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Run Dev + Agent",
+      "configurations": ["Debug Server (Node)", "Debug Python Agent"]
+    }
+  ]
+}
