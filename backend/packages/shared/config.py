@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     audit_log_enabled: bool = True
     ssl_required: bool = False
     trust_proxy: bool = False
+    auth0_domain: str = ""
+    auth0_audience: str = ""
 
     class Config:
         env_file = _ENV_FILES or ".env"

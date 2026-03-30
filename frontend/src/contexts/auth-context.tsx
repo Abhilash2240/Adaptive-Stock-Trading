@@ -1,192 +1,91 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { normalizeError, parseApiError } from '../lib/parse-api-error';
+import { createContext, useContext, type ReactNode } from "react";
+import { useAuth0 } from "@auth0/auth0-react";
 
-interface User {
+interface AuthUser {
   id: string;
-  username: string;
-  created_at: string;
-  is_active: boolean;
+  sub: string;
+  email?: string;
+  name?: string;
+  picture?: string;
+  username?: string;
+  created_at?: string;
+  is_active?: boolean;
 }
 
-interface AuthContextType {
-  user: User | null;
-  token: string | null;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<string>;
-  logout: () => void;
+interface AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
-  error: string | null;
+  user: AuthUser | null;
+  token: string | null;
+  login: () => void;
+  logout: () => void;
+  getToken: () => Promise<string>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// Use the same API_BASE strategy as use-api.ts: empty string means all calls go
-// through the Vite dev-server proxy (which forwards /api/* to :8001).
-const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
-
-function resolveUrl(path: string): string {
-  if (!API_BASE) return path;
-  return `${API_BASE}${path}`;
-}
+const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const storedToken = localStorage.getItem('auth_token');
-    if (storedToken) {
-      setToken(storedToken);
-      verifyToken(storedToken);
-    } else {
-      setIsLoading(false);
-    }
-  }, []);
-
-  // Listen for session-expired events fired by the request() helper in use-api.ts
-  // so we can clear auth state gracefully without a hard page reload.
-  useEffect(() => {
-    const handleExpired = () => {
-      setUser(null);
-      setToken(null);
-      setError("Session expired");
-    };
-    window.addEventListener('auth:expired', handleExpired);
-    return () => window.removeEventListener('auth:expired', handleExpired);
-  }, []);
-
-  const verifyToken = async (authToken: string) => {
-    try {
-      const response = await fetch(resolveUrl('/api/v1/auth/me'), {
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      if (response.ok) {
-        const userData = await response.json();
-        setUser(userData);
-        setToken(authToken);
-      } else {
-        localStorage.removeItem('auth_token');
-        setToken(null);
-        setUser(null);
-      }
-    } catch {
-      localStorage.removeItem('auth_token');
-      setToken(null);
-      setUser(null);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  /* ── Login: authenticate, fetch profile, land on dashboard ── */
-  const login = async (email: string, password: string) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const username = email;
-      const response = await fetch(resolveUrl('/api/v1/auth/login'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
-      if (!response.ok) {
-        const errBody = await response.json().catch(() => null);
-        throw new Error(parseApiError(errBody, 'Authentication failed'));
-      }
-      const data = await response.json();
-      const accessToken = data.access_token;
-
-      localStorage.setItem('auth_token', accessToken);
-      setToken(accessToken);
-
-      // Fetch full user profile
-      const meRes = await fetch(resolveUrl('/api/v1/auth/me'), {
-        headers: { 'Authorization': `Bearer ${accessToken}` },
-      });
-      if (meRes.ok) {
-        setUser(await meRes.json());
-      } else {
-        setUser({ id: '', username, created_at: new Date().toISOString(), is_active: true });
-      }
-    } catch (err) {
-      console.error('Login failed:', err);
-      setError(normalizeError(err));
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  /* ── Register: create account on server but do NOT log in.
-       Returns the created username so the UI can show a success
-       message and redirect the user to the sign-in form. ───── */
-  const register = async (email: string, password: string): Promise<string> => {
-    setError(null);
-    try {
-      const username = email;
-      const response = await fetch(resolveUrl('/api/v1/auth/register'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
-      if (!response.ok) {
-        const errBody = await response.json().catch(() => null);
-        throw new Error(parseApiError(errBody, 'Authentication failed'));
-      }
-      const data = await response.json();
-      // Auto-login: backend returns access_token on register
-      if (data.access_token) {
-        const accessToken = data.access_token;
-        localStorage.setItem('auth_token', accessToken);
-        setToken(accessToken);
-        const meRes = await fetch(resolveUrl('/api/v1/auth/me'), {
-          headers: { 'Authorization': `Bearer ${accessToken}` },
-        });
-        if (meRes.ok) {
-          setUser(await meRes.json());
-        } else {
-          setUser({ id: data.user?.id ?? '', username, created_at: new Date().toISOString(), is_active: true });
-        }
-      }
-      return data.user?.username ?? username;
-    } catch (err) {
-      console.error('Registration failed:', err);
-      setError(normalizeError(err));
-      throw err;
-    }
-  };
-
-  const logout = () => {
-    setUser(null);
-    setToken(null);
-    setError(null);
-    localStorage.removeItem('auth_token');
-  };
-
-  const value: AuthContextType = {
-    user,
-    token,
-    login,
-    register,
-    logout,
-    isAuthenticated: !!user,
+  const {
+    isAuthenticated,
     isLoading,
-    error,
+    user,
+    loginWithRedirect,
+    logout: auth0Logout,
+    getAccessTokenSilently,
+  } = useAuth0();
+
+  const mappedUser: AuthUser | null = user
+    ? {
+        id: user.sub ?? user.email ?? "",
+        sub: user.sub ?? "",
+        email: user.email,
+        name: user.name,
+        picture: user.picture,
+        username: user.email ?? user.name ?? user.sub,
+        is_active: true,
+      }
+    : null;
+
+  const login = () => {
+    void loginWithRedirect();
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  const logout = () =>
+    auth0Logout({
+      logoutParams: {
+        returnTo: import.meta.env.VITE_AUTH0_REDIRECT_URI ?? window.location.origin,
+      },
+    });
+
+  const getToken = async (): Promise<string> => {
+    return await getAccessTokenSilently({
+      authorizationParams: {
+        audience: import.meta.env.VITE_AUTH0_AUDIENCE,
+      },
+    });
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{
+        isAuthenticated,
+        isLoading,
+        user: mappedUser,
+        token: null,
+        login,
+        logout,
+        getToken,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
+    throw new Error("useAuth must be used inside AuthProvider");
   }
-  return context;
+  return ctx;
 }

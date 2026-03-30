@@ -2,11 +2,13 @@
 Authentication routes for user registration, login, and token management.
 """
 
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from packages.shared.auth0 import AuthenticatedUser, get_current_user
 from packages.shared.config import Settings, get_settings
 from packages.shared.security import (
     AuditLogger,
@@ -18,14 +20,13 @@ from packages.shared.security import (
     authenticate_user,
     audit_logger,
     create_user_account,
-    get_current_user,
     limiter,
 )
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 security_scheme = HTTPBearer()
 
-@router.post("/register", response_model=dict, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=dict, status_code=status.HTTP_201_CREATED, deprecated=True)
 @limiter.limit("5/15minutes")  # 5 registration attempts per 15 minutes
 async def register(
     request: Request,
@@ -72,7 +73,7 @@ async def register(
             detail="Registration failed"
         )
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=Token, deprecated=True)
 @limiter.limit("5/15minutes")  # 5 login attempts per 15 minutes
 async def login(
     request: Request,
@@ -119,10 +120,15 @@ async def login(
 
 @router.get("/me", response_model=User)
 async def get_current_user_info(
-    current_user: Annotated[User, Depends(get_current_user)]
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)]
 ) -> User:
     """Get current authenticated user information."""
-    return current_user
+    return User(
+        id=current_user.id,
+        username=current_user.email or current_user.sub,
+        created_at=datetime.now(timezone.utc),
+        is_active=True,
+    )
 
 @router.post("/verify")
 async def verify_token(
@@ -145,15 +151,15 @@ async def verify_token(
             "error": e.detail
         }
 
-@router.post("/refresh")
+@router.post("/refresh", deprecated=True)
 async def refresh_token(
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     settings: Annotated[Settings, Depends(get_settings)]
 ) -> Token:
     """Refresh the user's access token."""
     jwt_manager = JWTManager(settings)
     access_token = jwt_manager.create_access_token(
-        data={"sub": current_user.username, "user_id": current_user.id}
+        data={"sub": current_user.email or current_user.sub, "user_id": current_user.id}
     )
     
     return Token(

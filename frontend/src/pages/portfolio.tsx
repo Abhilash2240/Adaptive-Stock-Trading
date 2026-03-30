@@ -6,8 +6,8 @@ import { usePortfolioState } from "@/hooks/use-api";
 
 export default function PortfolioPage() {
   const [location, setLocation] = useLocation();
-  const { user, logout, token } = useAuth();
-  const { data, isLoading } = usePortfolioState(Boolean(token));
+  const { user, logout, isAuthenticated } = useAuth();
+  const { data, isLoading } = usePortfolioState(isAuthenticated);
 
   const totalValue = data?.total_value ?? 0;
   const cash = data?.cash ?? 0;

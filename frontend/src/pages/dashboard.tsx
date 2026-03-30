@@ -268,14 +268,14 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 
 export default function DashboardPage() {
   const [, setLocation] = useLocation();
-  const { user, token, logout } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const [currentSymbol, setCurrentSymbol] = useState("AAPL");
   const [latestTick, setLatestTick] = useState<LiveTick | null>(null);
   const [priceHistory, setPriceHistory] = useState<number[]>([]);
 
-  const { data: portfolio } = usePortfolioState(Boolean(token));
+  const { data: portfolio } = usePortfolioState(isAuthenticated);
   const { data: trades = [] } = useTradeHistory(1, {});
-  const { data: agentStatus } = useAgentStatus(Boolean(token));
+  const { data: agentStatus } = useAgentStatus(isAuthenticated);
 
   const symbols = useMemo(() => {
     const source = portfolio?.positions?.map((p) => p.symbol) ?? [];
@@ -294,9 +294,8 @@ export default function DashboardPage() {
   };
 
   const { connected } = useTradingWebSocket({
-    token,
     onTick,
-    enabled: Boolean(token),
+    enabled: isAuthenticated,
   });
 
   const currentPosition = portfolio?.positions.find((p) => p.symbol === currentSymbol);

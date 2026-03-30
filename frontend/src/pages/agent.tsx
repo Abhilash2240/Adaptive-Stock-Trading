@@ -8,9 +8,9 @@ import { useAgentStatus, useTrainStep } from "@/hooks/use-api";
 
 export default function AgentPage() {
   const [location, setLocation] = useLocation();
-  const { user, logout, token } = useAuth();
+  const { user, logout, isAuthenticated } = useAuth();
 
-  const { data: status, isLoading, refetch } = useAgentStatus(Boolean(token));
+  const { data: status, isLoading, refetch } = useAgentStatus(isAuthenticated);
   const train = useTrainStep();
   const [manualCount, setManualCount] = useState(1);
 

@@ -19,7 +19,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("login");
-  const { login, register } = useAuth();
+  const { login } = useAuth();
 
   const resetForm = () => {
     setUsername("");
@@ -29,16 +29,10 @@ export default function LoginPage() {
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!username || !password) {
-      setError("Please fill in all fields");
-      return;
-    }
-
-    setError(null);
     setIsLoading(true);
 
     try {
-      await login(username, password);
+      login();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -48,36 +42,11 @@ export default function LoginPage() {
 
   const handleRegister = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!username || !password) {
-      setError("Please fill in all fields");
-      return;
-    }
-
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters long");
-      return;
-    }
-
-    if (!/[A-Z]/.test(password)) {
-      setError("Password must contain at least one uppercase letter");
-      return;
-    }
-
-    if (!/[a-z]/.test(password)) {
-      setError("Password must contain at least one lowercase letter");
-      return;
-    }
-
-    if (!/[0-9]/.test(password)) {
-      setError("Password must contain at least one digit");
-      return;
-    }
-
     setError(null);
     setIsLoading(true);
 
     try {
-      await register(username, password);
+      login();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {

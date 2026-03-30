@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useState } from "react";
+import { useAuth0 } from "@auth0/auth0-react";
 
 export interface LiveTick {
   symbol: string;
@@ -15,24 +16,35 @@ export interface LiveTick {
 }
 
 interface UseTradingWebSocketOptions {
-  token: string | null;
   onTick: (tick: LiveTick) => void;
   enabled?: boolean;
 }
 
 export function useTradingWebSocket({
-  token,
   onTick,
   enabled = true,
 }: UseTradingWebSocketOptions) {
+  const { getAccessTokenSilently } = useAuth0();
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onTickRef = useRef(onTick);
   const [connected, setConnected] = useState(false);
   onTickRef.current = onTick;
 
-  const connect = useCallback(() => {
-    if (!token || !enabled) return;
+  const connect = useCallback(async () => {
+    if (!enabled) return;
+
+    let token = "";
+    try {
+      token = await getAccessTokenSilently({
+        authorizationParams: {
+          audience: import.meta.env.VITE_AUTH0_AUDIENCE,
+        },
+      });
+    } catch {
+      console.error("[WS] failed to get token");
+      return;
+    }
 
     const wsBase =
       import.meta.env.VITE_WS_URL ??
@@ -63,7 +75,9 @@ export function useTradingWebSocket({
     ws.onclose = () => {
       console.warn("[WS] disconnected — reconnecting in 3s");
       setConnected(false);
-      reconnectRef.current = setTimeout(connect, 3_000);
+      reconnectRef.current = setTimeout(() => {
+        void connect();
+      }, 3_000);
     };
 
     ws.onerror = (err) => {
@@ -72,10 +86,10 @@ export function useTradingWebSocket({
     };
 
     wsRef.current = ws;
-  }, [token, enabled]);
+  }, [enabled, getAccessTokenSilently]);
 
   useEffect(() => {
-    connect();
+    void connect();
     return () => {
       if (reconnectRef.current) {
         clearTimeout(reconnectRef.current);

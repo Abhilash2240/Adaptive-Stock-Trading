@@ -14,12 +14,11 @@ interface Props {
 }
 
 export function LiveSignalCard({ symbol = "AAPL" }: Props) {
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [tick, setTick] = useState<LiveTick | null>(null);
 
   useTradingWebSocket({
-    token,
-    enabled: !!token,
+    enabled: isAuthenticated,
     onTick: (incoming) => {
       if (!symbol || incoming.symbol === symbol) {
         setTick(incoming);

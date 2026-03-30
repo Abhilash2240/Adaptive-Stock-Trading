@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { parseApiError } from "@/lib/parse-api-error";
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 
@@ -12,33 +13,40 @@ function resolveUrl(path: string): string {
 	return `${API_BASE}${path}`;
 }
 
-function getAuthHeaders(): Record<string, string> {
-	const token = localStorage.getItem("auth_token");
-	return token ? { Authorization: `Bearer ${token}` } : {};
+let tokenGetter: (() => Promise<string>) | null = null;
+
+export function setTokenGetter(fn: (() => Promise<string>) | null): void {
+	tokenGetter = fn;
+}
+
+async function getAuthHeaders(): Promise<Record<string, string>> {
+	if (!tokenGetter) {
+		return {};
+	}
+	try {
+		const token = await tokenGetter();
+		return token ? { Authorization: `Bearer ${token}` } : {};
+	} catch {
+		return {};
+	}
 }
 
 async function request(path: string, init: RequestInit = {}): Promise<Response> {
+	const authHeaders = await getAuthHeaders();
 	const response = await fetch(resolveUrl(path), {
 		credentials: "include",
 		...init,
 		headers: {
 			Accept: "application/json",
-			...getAuthHeaders(),
+			"Content-Type": "application/json",
+			...authHeaders,
 			...(init.headers ?? {}),
 		},
 	});
 
-	if (response.status === 401) {
-		localStorage.removeItem("auth_token");
-		// Signal the auth context to clear state gracefully instead of
-		// hard-reloading the page (which caused a login redirect loop).
-		window.dispatchEvent(new Event("auth:expired"));
-		throw new Error("Session expired");
-	}
-
 	if (!response.ok) {
-		const message = (await response.text()) || `Request failed with status ${response.status}`;
-		throw new Error(message);
+		const errBody = await response.json().catch(() => null);
+		throw new Error(parseApiError(errBody, `Request failed with status ${response.status}`));
 	}
 
 	return response;

@@ -26,6 +26,8 @@ firebase-admin = "6.6.0"
 google-cloud-pubsub = "2.23.1"
 google-cloud-storage = "2.18.2"
 polygon-api-client = { version = "1.9.0", optional = true }
+python-jose = { version = "3.3.0", extras = ["cryptography"] }
+requests = "2.32.3"
 
 [tool.poetry.extras]
 data-providers = ["polygon-api-client"]

@@ -1,13 +1,14 @@
-import React from "react";
+import React, { type ReactNode, useEffect } from "react";
 import { Switch, Route, Redirect } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { useAuth0 } from "@auth0/auth0-react";
 
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
-import { AuthPage } from "@/pages/AuthPage";
+import { setTokenGetter } from "@/hooks/use-api";
 import Dashboard from "@/pages/dashboard";
 import Portfolio from "@/pages/portfolio";
 import Trades from "@/pages/trades";
@@ -42,8 +43,34 @@ class ErrorBoundary extends React.Component<
 }
 
 /* ─── Route gate ─────────────────────────────────────────────────── */
-function AppGate() {
-  const { isAuthenticated, isLoading, login, register, error } = useAuth();
+function LoginRedirect() {
+  const { isAuthenticated, isLoading, loginWithRedirect } = useAuth0();
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      void loginWithRedirect();
+    }
+  }, [isAuthenticated, isLoading, loginWithRedirect]);
+
+  if (isAuthenticated) {
+    return <Redirect to="/dashboard" />;
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <p className="text-sm text-muted-foreground">Redirecting to login...</p>
+    </div>
+  );
+}
+
+function ProtectedRoute({ children }: { children: ReactNode }) {
+  const { isAuthenticated, isLoading, loginWithRedirect } = useAuth0();
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      void loginWithRedirect();
+    }
+  }, [isAuthenticated, isLoading, loginWithRedirect]);
 
   if (isLoading) {
     return (
@@ -56,30 +83,47 @@ function AppGate() {
     );
   }
 
+  if (!isAuthenticated) {
+    return null;
+  }
+
+  return <>{children}</>;
+}
+
+function TokenWirer() {
+  const { getAccessTokenSilently } = useAuth0();
+
+  useEffect(() => {
+    setTokenGetter(() =>
+      getAccessTokenSilently({
+        authorizationParams: {
+          audience: import.meta.env.VITE_AUTH0_AUDIENCE,
+        },
+      }),
+    );
+
+    return () => {
+      setTokenGetter(null);
+    };
+  }, [getAccessTokenSilently]);
+
+  return null;
+}
+
+function AppGate() {
+  const { isAuthenticated } = useAuth();
+
   return (
     <Switch>
       <Route path="/login">
-        {isAuthenticated ? (
-          <Redirect to="/dashboard" />
-        ) : (
-          <AuthPage
-            onLogin={(email, password) => {
-              void login(email, password);
-            }}
-            onRegister={(email, password) => {
-              void register(email, password);
-            }}
-            isLoading={isLoading}
-            error={error}
-          />
-        )}
+        <LoginRedirect />
       </Route>
 
-      <Route path="/dashboard">{isAuthenticated ? <Dashboard /> : <Redirect to="/login" />}</Route>
-      <Route path="/portfolio">{isAuthenticated ? <Portfolio /> : <Redirect to="/login" />}</Route>
-      <Route path="/trades">{isAuthenticated ? <Trades /> : <Redirect to="/login" />}</Route>
-      <Route path="/agent">{isAuthenticated ? <Agent /> : <Redirect to="/login" />}</Route>
-      <Route path="/settings">{isAuthenticated ? <Settings /> : <Redirect to="/login" />}</Route>
+      <Route path="/dashboard"><ProtectedRoute><Dashboard /></ProtectedRoute></Route>
+      <Route path="/portfolio"><ProtectedRoute><Portfolio /></ProtectedRoute></Route>
+      <Route path="/trades"><ProtectedRoute><Trades /></ProtectedRoute></Route>
+      <Route path="/agent"><ProtectedRoute><Agent /></ProtectedRoute></Route>
+      <Route path="/settings"><ProtectedRoute><Settings /></ProtectedRoute></Route>
 
       <Route path="/">
         {isAuthenticated ? <Redirect to="/dashboard" /> : <Redirect to="/login" />}
@@ -97,6 +141,7 @@ export default function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
+          <TokenWirer />
           <ThemeProvider defaultTheme="dark" storageKey="rl-trader-theme">
             <TooltipProvider>
               <AppGate />

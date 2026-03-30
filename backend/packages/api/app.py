@@ -20,6 +20,7 @@ from packages.data.provider import DataProvider, get_data_provider
 from packages.db.engine import get_session_ctx
 from packages.db.repositories import UserSettingsRepository
 from packages.shared.config import Settings, get_settings
+from packages.shared.auth0 import AuthenticatedUser, get_current_user, verify_auth0_token
 from packages.shared.metrics import websocket_closed, websocket_connected, websocket_message_sent
 from packages.shared.schemas import (
     AgentAction,
@@ -31,9 +32,7 @@ from packages.shared.schemas import (
 from packages.shared.security import (
     InputValidator,
     audit_logger,
-    get_current_user,
     limiter,
-    User
 )
 from .routes import auth, health, portfolio
 
@@ -148,7 +147,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "health": "/api/v1/health",
             "auth": "/api/v1/auth",
             "features": [
-                "JWT Authentication",
+                "Auth0 JWT Authentication",
                 "Real-time Stock Data Streaming",
                 "AI Trading Agent",
                 "Rate Limiting",
@@ -165,7 +164,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": "operational",
             "environment": resolved_settings.environment,
             "security": {
-                "authentication": "JWT",
+                "authentication": "Auth0 JWT",
                 "rate_limiting": "enabled",
                 "cors": "configured",
                 "security_headers": "enabled"
@@ -246,7 +245,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         stream_request: StreamRequest,
         provider: DataProvider = Depends(get_data_provider),
-        current_user: User = Depends(get_current_user),
+        current_user: AuthenticatedUser = Depends(get_current_user),
     ) -> dict[str, str]:
         # Validate and sanitize input
         validated_data = validator.validate_stream_request({
@@ -266,7 +265,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/settings", response_model=UserSettingsResponse)
     async def get_settings_route(
         userId: str = Query(...),
-        current_user: User = Depends(get_current_user),
+        current_user: AuthenticatedUser = Depends(get_current_user),
     ) -> UserSettingsResponse:
         if current_user.id != userId:
             raise HTTPException(status_code=403, detail="Forbidden")
@@ -281,7 +280,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/settings", response_model=UserSettingsResponse)
     async def save_settings_route(
         payload: SaveSettingsPayload,
-        current_user: User = Depends(get_current_user),
+        current_user: AuthenticatedUser = Depends(get_current_user),
     ) -> UserSettingsResponse:
         if current_user.id != payload.userId:
             raise HTTPException(status_code=403, detail="Forbidden")
@@ -316,11 +315,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return
 
         try:
-            # Verify JWT token for WebSocket connection
-            from packages.shared.security import JWTManager
-            ws_jwt = JWTManager(resolved_settings)
-            token_data = ws_jwt.verify_token(token)
-            user_id = token_data.username
+            if resolved_settings.auth0_domain and resolved_settings.auth0_audience:
+                payload = verify_auth0_token(token, resolved_settings)
+                user_id = str(payload.get("sub") or "")
+            else:
+                # Keep local dev/test compatibility when Auth0 is not configured.
+                from packages.shared.security import JWTManager
+
+                ws_jwt = JWTManager(resolved_settings)
+                token_data = ws_jwt.verify_token(token)
+                user_id = token_data.username
+
             if not user_id:
                 await websocket.accept()
                 await websocket.close(code=4001, reason="Invalid authentication")
@@ -384,7 +389,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def agent_status(
         request: Request,
         agent: AgentService = Depends(get_agent_service),
-        current_user: User = Depends(get_current_user),
+        current_user: AuthenticatedUser = Depends(get_current_user),
     ) -> AgentStatus:
         await audit_logger.log_user_action(
             user_id=current_user.id,
@@ -397,14 +402,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def get_agent_action(
         symbol: str,
         portfolio: dict = Body(...),
-        current_user: User = Depends(get_current_user),
+        current_user: AuthenticatedUser = Depends(get_current_user),
         agent: AgentService = Depends(get_agent_service),
     ) -> AgentAction:
         return agent.get_action(symbol=symbol, portfolio=portfolio)
 
     @app.post("/rl/train", response_model=dict)
     async def trigger_training(
-        current_user: User = Depends(get_current_user),
+        current_user: AuthenticatedUser = Depends(get_current_user),
         agent: AgentService = Depends(get_agent_service),
     ) -> dict:
         loss = agent._agent.train_step()

@@ -12,7 +12,7 @@ from packages.shared.schemas import (
     Position,
     TradeRecord,
 )
-from packages.shared.security import User, get_current_user
+from packages.shared.auth0 import AuthenticatedUser, get_current_user
 
 router = APIRouter(tags=["portfolio"])
 
@@ -93,7 +93,7 @@ def _build_positions(
 @router.get("/portfolio", response_model=PortfolioStateResponse)
 async def get_portfolio(
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> PortfolioStateResponse:
     portfolio_row = await _get_or_create_portfolio(session, current_user.id)
 
@@ -128,7 +128,7 @@ async def get_portfolio(
 async def get_trades(
     limit: int = 50,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> list[TradeRecord]:
     stmt = (
         select(AgentActionDB)
@@ -158,7 +158,7 @@ async def get_trades(
 async def log_trade(
     payload: LogTradePayload,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> TradeRecord:
     portfolio_row = await _get_or_create_portfolio(session, current_user.id)
 
