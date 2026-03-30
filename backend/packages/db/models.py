@@ -56,6 +56,7 @@ class UserSettingsDB(SQLModel, table=True):
     user_id: str = Field(foreign_key="users.id", unique=True, index=True)
     trading_mode: str = Field(default="paper")  # paper | live
     market_data_provider: str = Field(default="twelvedata")
+    gemini_enabled: bool = Field(default=False)
     notifications_enabled: bool = Field(default=True)
     theme: str = Field(default="light")
     updated_at: datetime = Field(
@@ -161,6 +162,17 @@ class PositionDB(SQLModel, table=True):
     )
 
 
+class PortfolioStateDB(SQLModel, table=True):
+    __tablename__ = "portfolio_state"
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: str = Field(index=True, unique=True)
+    cash: float = Field(default=10_000.0)
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow
+    )
+
+
 # --------------------------------------------------------------------------- #
 #  Agent & RL
 # --------------------------------------------------------------------------- #
@@ -177,10 +189,17 @@ class AgentActionDB(SQLModel, table=True):
         default=None,
         sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
     )
+    user_id: Optional[str] = Field(default=None, index=True)
     symbol: str = Field(max_length=10, index=True)
     side: str = Field(max_length=4)  # buy | sell
+    quantity: float = Field(default=0.0)
+    price: float = Field(default=0.0)
     confidence: float
-    model_version: str = Field(max_length=100)
+    model_version: str = Field(default="unknown", max_length=100)
+    executed_at: datetime = Field(
+        default_factory=utcnow,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now()),
+    )
     timestamp: datetime = Field(
         default_factory=utcnow,
         sa_column=Column(DateTime(timezone=True), server_default=func.now()),

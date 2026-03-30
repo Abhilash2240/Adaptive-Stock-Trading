@@ -12,7 +12,7 @@
     "build:analyze": "cross-env ANALYZE=true vite build --emptyOutDir false",
     "preview": "vite preview --host",
     "check": "tsc",
-    "lint": "eslint \"apps/client/src/**/*.{ts,tsx}\"",
+    "lint": "eslint \"frontend/src/**/*.{ts,tsx}\"",
     "lighthouse": "lhci autorun"
   },
   "dependencies": {

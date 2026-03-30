@@ -4,7 +4,6 @@ Implements JWT authentication, rate limiting, input validation, and security hea
 """
 
 import re
-import secrets
 import time
 from datetime import datetime, timedelta, timezone
 from functools import wraps
@@ -14,7 +13,7 @@ import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -31,18 +30,34 @@ limiter = Limiter(key_func=get_remote_address)
 
 # JWT Secret key management
 def get_jwt_secret(settings: Settings) -> str:
-    """Get JWT secret from environment or generate a secure one."""
-    if hasattr(settings, 'jwt_secret_key') and settings.jwt_secret_key:
-        return settings.jwt_secret_key
-    # Generate a secure secret if not provided (not recommended for production)
-    print("⚠️  WARNING: JWT_SECRET_KEY not set in environment. Using generated secret.")
-    print("⚠️  This is NOT secure for production use!")
-    return secrets.token_urlsafe(64)
+    """Get JWT secret from settings."""
+    return settings.jwt_secret
 
 # Models for authentication
 class UserCreate(BaseModel):
-    username: str = Field(..., min_length=3, max_length=30, pattern="^[a-zA-Z0-9_]+$")
-    password: str = Field(..., min_length=8)
+    username: str = Field(..., min_length=3, max_length=64)
+    password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        username = value.strip()
+        if len(username) < 3:
+            raise ValueError("Username must be at least 3 characters")
+        if " " in username:
+            raise ValueError("Username must not contain spaces")
+        return username
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        if len(value) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        if not re.search(r"[A-Za-z]", value):
+            raise ValueError("Password must contain at least one letter")
+        if not re.search(r"[0-9]", value):
+            raise ValueError("Password must contain at least one number")
+        return value
     
 class UserLogin(BaseModel):
     username: str = Field(..., min_length=1, max_length=30)
@@ -87,12 +102,11 @@ class PasswordManager:
         """Validate password meets strength requirements."""
         if len(password) < 8:
             return False
-        
-        has_upper = any(c.isupper() for c in password)
-        has_lower = any(c.islower() for c in password)
+
+        has_letter = any(c.isalpha() for c in password)
         has_digit = any(c.isdigit() for c in password)
-        
-        return has_upper and has_lower and has_digit
+
+        return has_letter and has_digit
 
 # JWT utilities
 class JWTManager:
@@ -414,7 +428,7 @@ async def create_user_account(username: str, password: str) -> User:
     if not password_manager.validate_password_strength(password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password does not meet strength requirements"
+            detail="Password must contain at least one letter and one number"
         )
     
     hashed_password = password_manager.hash_password(password)

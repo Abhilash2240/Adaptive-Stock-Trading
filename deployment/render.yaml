@@ -5,7 +5,7 @@ services:
   - type: web
     name: adaptive-stock-trading-api
     runtime: docker
-    dockerfilePath: ./Dockerfile.backend
+    dockerfilePath: ./deployment/Dockerfile.backend
     plan: free            # change to "starter" for no cold starts
     healthCheckPath: /api/status
     envVars:

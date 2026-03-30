@@ -1,9 +1,43 @@
 # Adaptive-Stock-Trading
 
-## Quick start
+## Project layout
 
-1. Install dependencies: run `powershell -ExecutionPolicy Bypass -File scripts/setup.ps1` (or manually create the `.venv` via `py -3.11 -m venv .venv`, then `.\.venv\Scripts\Activate.ps1`, `pip install -r backend\requirements.txt`, and `npm install`).
-2. Copy `backend/.env.example` to `backend/.env`, and `apps/client/.env.example` to `apps/client/.env.local`. Adjust values (API endpoints, Sentry DSN, Polygon keys, etc.).
-3. Launch both services together: `npm run dev:full`. This wraps the FastAPI backend (`python -m backend.main`) and the Vite frontend (`vite dev`).
+- `backend/` - FastAPI backend source and Python runtime files
+- `frontend/` - React + Vite frontend source
+- `database/` - Local database orchestration files (`docker-compose.yml`)
+- `deployment/` - Deployment manifests (`render.yaml`, `vercel.json`, Dockerfiles)
 
-On Windows you can also run `powershell -ExecutionPolicy Bypass -File scripts/start.ps1` to open dedicated terminals for each process. Stop both servers with `CTRL+C` in their respective windows.
+## Getting Started
+
+### Prerequisites
+- Python 3.11+
+- Node.js 18+
+- PostgreSQL (or use Neon cloud - see .env.example)
+
+### Backend setup
+cd backend
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env        # then fill in your values
+python run_server.py        # runs on http://localhost:8001
+
+### Frontend setup
+cd frontend
+npm install
+cp .env.example .env.local  # already correct for local dev
+npm run dev                 # runs on http://localhost:5173
+
+### Generate a JWT secret
+python -c "import secrets; print(secrets.token_hex(32))"
+Copy the output into JWT_SECRET= in backend/.env
+
+### Default credentials (dev)
+Register a new account at http://localhost:5173/login
+Paper trading mode is enabled by default - no real money.
+
+## Infra commands
+
+- Start local database stack: `docker compose -f database/docker-compose.yml up -d`
+- Render blueprint: `deployment/render.yaml`
+- Vercel config: `deployment/vercel.json`

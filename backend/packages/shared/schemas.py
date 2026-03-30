@@ -18,8 +18,9 @@ def validate_symbol(v: str) -> str:
 
 
 class OrderSide(str, Enum):
-    BUY = "buy"
-    SELL = "sell"
+    BUY = "BUY"
+    SELL = "SELL"
+    HOLD = "HOLD"
 
 
 class AgentState(str, Enum):
@@ -62,6 +63,11 @@ class AgentAction(BaseModel):
 class AgentStatus(BaseModel):
     state: AgentState
     model_version: str
+    last_action: AgentAction | None = None
+    epsilon: float = 1.0
+    buffer_size: int = 0
+    step_count: int = 0
+    last_trained: datetime | None = None
     updated_at: datetime
 
 
@@ -73,3 +79,69 @@ class StreamRequest(BaseModel):
     @classmethod
     def _normalise_symbol(cls, v: str) -> str:
         return v.strip().upper()
+
+
+# -- Settings schemas ------------------------------------------------------
+class UserSettingsResponse(BaseModel):
+    userId: str
+    tradingMode: str
+    marketDataProvider: str
+    geminiEnabled: bool
+    notificationsEnabled: bool
+
+    @classmethod
+    def from_db(cls, row: "UserSettingsDB") -> "UserSettingsResponse":
+        return cls(
+            userId=row.user_id,
+            tradingMode=row.trading_mode,
+            marketDataProvider=row.market_data_provider,
+            geminiEnabled=row.gemini_enabled,
+            notificationsEnabled=row.notifications_enabled,
+        )
+
+
+class SaveSettingsPayload(BaseModel):
+    userId: str
+    tradingMode: str | None = None
+    marketDataProvider: str | None = None
+    geminiEnabled: bool | None = None
+    notificationsEnabled: bool | None = None
+
+
+# -- Portfolio schemas -----------------------------------------------------
+class Position(BaseModel):
+    symbol: str
+    quantity: float
+    avg_price: float
+    current_price: float
+    unrealized_pnl: float
+    unrealized_pnl_pct: float
+
+
+class PortfolioStateResponse(BaseModel):
+    user_id: str
+    cash: float
+    total_value: float
+    unrealized_pnl: float
+    positions: list[Position]
+    updated_at: datetime
+
+
+# -- Trade schemas ---------------------------------------------------------
+class TradeRecord(BaseModel):
+    id: int
+    user_id: str
+    symbol: str
+    side: str
+    quantity: float
+    price: float
+    confidence: float
+    executed_at: datetime
+
+
+class LogTradePayload(BaseModel):
+    symbol: str
+    side: str
+    quantity: float
+    price: float
+    confidence: float = 0.0

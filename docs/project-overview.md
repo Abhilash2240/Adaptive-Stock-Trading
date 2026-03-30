@@ -24,10 +24,11 @@ Client (Vite/React)  <-->  FastAPI REST + WS  <-->  Data Providers (Mock / Polyg
 
 ## 4. Project Structure
 ```
-apps/
-  client/        # Frontend source, Vite configs, components, pages
+frontend/        # React + Vite frontend source
 backend/         # FastAPI app, data providers, agent service, tests
-.pnpm, .env*     # Environment and toolchain configuration
+database/        # Local database compose files
+deployment/      # Deployment manifests (Render, Vercel, Dockerfiles)
+.env*            # Environment and toolchain configuration
 ```
 Additional roots include `bandit.yaml`, `eslint.config.js`, `tailwind.config.ts`, `vite.config.ts`, `tsconfig.json`.
 

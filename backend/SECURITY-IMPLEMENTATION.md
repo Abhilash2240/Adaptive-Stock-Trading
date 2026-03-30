@@ -22,7 +22,7 @@ This document outlines the comprehensive security measures implemented for the A
   - Authentication: 5 attempts per minute
   - Stream requests: 10 per minute
   - Agent status: 30 per minute
-- **User-based Tracking**: Rate limits tracked per authenticated user
+- **IP-based Tracking**: Rate limiting is IP-based via the security middleware
 - **Configurable Thresholds**: Easy adjustment of rate limits per endpoint
 
 ### 4. Security Headers
@@ -61,8 +61,8 @@ This document outlines the comprehensive security measures implemented for the A
 - `POST /login`: Secure user login with rate limiting
 - `POST /refresh`: Token refresh mechanism
 - `GET /me`: User profile retrieval
-- `POST /logout`: Secure session termination
-- `GET /verify`: Token verification endpoint
+- `POST /logout`: JWT is stateless - logout is handled client-side by clearing the token
+- `POST /verify`: Token verification endpoint (`/api/v1/auth/verify`)
 
 ### Protected Trading Routes
 - `POST /stream`: Market data streaming (authenticated)
@@ -74,7 +74,7 @@ This document outlines the comprehensive security measures implemented for the A
 ### Environment Variables
 ```bash
 # Security Configuration
-JWT_SECRET_KEY=your-super-secret-key-here
+JWT_SECRET=your-super-secret-key-here
 JWT_ALGORITHM=HS256
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
 
@@ -143,7 +143,7 @@ RATE_LIMIT_ENABLED=true
 
 ## ⚠️ Critical Security Reminders
 
-1. **Change Default Secrets**: Always update JWT_SECRET_KEY in production
+1. **Change Default Secrets**: Always update JWT_SECRET in production
 2. **HTTPS Only**: Never run in production without TLS encryption
 3. **Database Security**: Ensure database credentials are secure
 4. **Regular Backups**: Maintain secure backups of user data

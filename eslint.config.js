@@ -9,7 +9,7 @@ export default tseslint.config(
     ignores: [
       "node_modules",
       "dist",
-      "apps/client/dist",
+      "frontend/dist",
       "reports",
       "stats",
       "coverage",
@@ -18,7 +18,7 @@ export default tseslint.config(
     ],
   },
   {
-    files: ["apps/client/src/**/*.{ts,tsx}", "apps/client/src/hooks/**/*.{ts,tsx}", "apps/client/src/context/**/*.{ts,tsx}"],
+    files: ["frontend/src/**/*.{ts,tsx}", "frontend/src/hooks/**/*.{ts,tsx}", "frontend/src/context/**/*.{ts,tsx}"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     plugins: {
       react: reactPlugin,

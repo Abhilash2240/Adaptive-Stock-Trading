@@ -1,4 +1,5 @@
 import asyncio
+import warnings
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import Protocol, cast
@@ -55,13 +56,34 @@ def get_data_provider() -> DataProvider:
         if not symbols:
             symbols = ["AAPL"]
 
-        if not settings.twelvedata_api_key:
-            raise ValueError("TWELVEDATA_API_KEY must be set in .env")
-        from .adapters.twelvedata import TwelveDataProvider
+        provider_name = (settings.data_provider or "mock").strip().lower()
+        if provider_name == "mock":
+            from .adapters.mock import MockDataProvider
 
-        _provider = TwelveDataProvider(
-            api_key=settings.twelvedata_api_key,
-            symbols=symbols,
-            interval=settings.twelvedata_poll_interval,
-        )
+            _provider = MockDataProvider(
+                symbols=symbols,
+                interval=settings.mock_stream_interval,
+            )
+        elif provider_name == "twelvedata":
+            if not settings.twelvedata_api_key:
+                warnings.warn(
+                    "TWELVEDATA_API_KEY not set - falling back to mock provider",
+                    RuntimeWarning,
+                )
+                from .adapters.mock import MockDataProvider
+
+                _provider = MockDataProvider(
+                    symbols=symbols,
+                    interval=settings.mock_stream_interval,
+                )
+                return cast(DataProvider, _provider)
+            from .adapters.twelvedata import TwelveDataProvider
+
+            _provider = TwelveDataProvider(
+                api_key=settings.twelvedata_api_key,
+                symbols=symbols,
+                interval=settings.twelvedata_poll_interval,
+            )
+        else:
+            raise ValueError(f"Unsupported DATA_PROVIDER={provider_name!r}")
     return cast(DataProvider, _provider)

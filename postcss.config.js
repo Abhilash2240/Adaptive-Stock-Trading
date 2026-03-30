@@ -6,7 +6,7 @@ const ensureFromPlugin = () => ({
   // Ensure downstream plugins receive a `from` value to silence PostCSS warnings.
   Once(root, { result }) {
     if (!result.opts.from) {
-      result.opts.from = root.source?.input?.file ?? "apps/client/src/index.css";
+      result.opts.from = root.source?.input?.file ?? "frontend/src/index.css";
     }
   },
 });

@@ -1,7 +1,8 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+import os
 
-from fastapi import Depends, FastAPI, Request, Response, WebSocket
+from fastapi import Body, Depends, FastAPI, Query, Request, Response, WebSocket
 from fastapi import WebSocketDisconnect, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -10,26 +11,48 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
 from typing import Annotated
 
 from packages.agent.service import AgentService
 from packages.data.provider import DataProvider, get_data_provider
+from packages.db.engine import get_session_ctx
+from packages.db.repositories import UserSettingsRepository
 from packages.shared.config import Settings, get_settings
 from packages.shared.metrics import websocket_closed, websocket_connected, websocket_message_sent
-from packages.shared.schemas import AgentStatus, StreamRequest
+from packages.shared.schemas import (
+    AgentAction,
+    AgentStatus,
+    SaveSettingsPayload,
+    StreamRequest,
+    UserSettingsResponse,
+)
 from packages.shared.security import (
     InputValidator,
-    add_security_headers,
     audit_logger,
     get_current_user,
     limiter,
     User
 )
-from .routes import auth, health
+from .routes import auth, health, portfolio
 
 # Security setup
 security_scheme = HTTPBearer()
 validator = InputValidator()
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=()"
+        )
+        return response
 
 
 @asynccontextmanager
@@ -73,30 +96,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Security middleware
     app.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["*"]  # handled by CORS; Render/Vercel set their own proxy headers
+        allowed_hosts=[
+            "localhost",
+            "127.0.0.1",
+            "*.railway.app",
+            "*.vercel.app",
+            # add your production domain here when known
+        ],
     )
 
-    # CORS middleware — use ALLOWED_ORIGINS env var so production deployments
-    # (Vercel frontend ↔ Render backend) work out of the box.
-    _env_origins = [o.strip() for o in resolved_settings.allowed_origins.split(",") if o.strip()]
-    allowed_origins = _env_origins or [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://localhost:8001",
-        "http://127.0.0.1:8001",
-    ]
+    _raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173")
+    _origins = [o.strip() for o in _raw.split(",") if o.strip()]
     
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=allowed_origins,
+        allow_origins=_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE"],
-        allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
-        expose_headers=["X-Total-Count"],
-        max_age=600,  # Cache preflight requests for 10 minutes
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
     )
+
+    app.add_middleware(SecurityHeadersMiddleware)
 
     # Rate limiting middleware
     app.state.limiter = limiter
@@ -107,13 +127,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Include routers
     app.include_router(auth.router, prefix="/api/v1") 
     app.include_router(getattr(health, "router", health))
-
-    # Add security headers middleware
-    @app.middleware("http")
-    async def security_headers_middleware(request: Request, call_next):
-        response = await call_next(request)
-        add_security_headers(response)
-        return response
+    app.include_router(portfolio.router)
 
     instrumentator = Instrumentator(should_ignore_untemplated=True)
     instrumentator.instrument(app).expose(
@@ -249,6 +263,44 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await provider.subscribe(stream_request.symbol, stream_request.channel)
         return {"status": "subscribed"}
 
+    @app.get("/settings", response_model=UserSettingsResponse)
+    async def get_settings_route(
+        userId: str = Query(...),
+        current_user: User = Depends(get_current_user),
+    ) -> UserSettingsResponse:
+        if current_user.id != userId:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        async with get_session_ctx() as session:
+            repo = UserSettingsRepository(session)
+            row = await repo.get(userId)
+            if row is None:
+                row = await repo.upsert(userId)
+            return UserSettingsResponse.from_db(row)
+
+    @app.post("/settings", response_model=UserSettingsResponse)
+    async def save_settings_route(
+        payload: SaveSettingsPayload,
+        current_user: User = Depends(get_current_user),
+    ) -> UserSettingsResponse:
+        if current_user.id != payload.userId:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        updates: dict = {}
+        if payload.tradingMode is not None:
+            updates["trading_mode"] = payload.tradingMode
+        if payload.marketDataProvider is not None:
+            updates["market_data_provider"] = payload.marketDataProvider
+        if payload.geminiEnabled is not None:
+            updates["gemini_enabled"] = payload.geminiEnabled
+        if payload.notificationsEnabled is not None:
+            updates["notifications_enabled"] = payload.notificationsEnabled
+
+        async with get_session_ctx() as session:
+            repo = UserSettingsRepository(session)
+            row = await repo.upsert(payload.userId, **updates)
+            return UserSettingsResponse.from_db(row)
+
     @app.websocket("/ws/quotes")
     async def quotes_websocket(
         websocket: WebSocket,
@@ -286,9 +338,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             
         await websocket.accept()
         websocket_connected(endpoint)
+        agent_service = get_agent_service()
         try:
             async for quote in provider.stream_quotes():
-                await websocket.send_json(quote.model_dump(mode="json"))
+                quote_payload = quote.model_dump(mode="json")
+                agent_service.on_quote(quote_payload)
+
+                _default_portfolio = {
+                    "position_flag": 0,
+                    "unrealized_pnl_pct": 0.0,
+                    "cash": 10_000.0,
+                    "total_value": 10_000.0,
+                    "trade_count_today": 0,
+                }
+
+                agent_action = agent_service.get_action(
+                    symbol=quote_payload["symbol"],
+                    portfolio=_default_portfolio,
+                )
+
+                last_price = float(quote_payload.get("price", 0.0))
+                broadcast_payload = {
+                    **quote_payload,
+                    "open": last_price,
+                    "high": last_price,
+                    "low": last_price,
+                    "close": last_price,
+                    "action_signal": agent_action.side.value,
+                    "confidence": round(agent_action.confidence, 4),
+                    "signal_timestamp": agent_action.generated_at.isoformat(),
+                }
+
+                await websocket.send_json(broadcast_payload)
                 websocket_message_sent(endpoint)
         except WebSocketDisconnect as exc:
             websocket_closed(endpoint, code=str(exc.code or "disconnect"))
@@ -311,6 +392,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             details={}
         )
         return await agent.status()
+
+    @app.post("/agent/action", response_model=AgentAction)
+    async def get_agent_action(
+        symbol: str,
+        portfolio: dict = Body(...),
+        current_user: User = Depends(get_current_user),
+        agent: AgentService = Depends(get_agent_service),
+    ) -> AgentAction:
+        return agent.get_action(symbol=symbol, portfolio=portfolio)
+
+    @app.post("/rl/train", response_model=dict)
+    async def trigger_training(
+        current_user: User = Depends(get_current_user),
+        agent: AgentService = Depends(get_agent_service),
+    ) -> dict:
+        loss = agent._agent.train_step()
+        return {
+            "loss": loss,
+            "epsilon": round(agent._agent.epsilon, 4),
+            "steps": agent._agent.step_count,
+        }
 
     return app
 

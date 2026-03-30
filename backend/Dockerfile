@@ -8,16 +8,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR ${APP_ROOT}
 
-COPY backend/requirements.txt ./requirements.txt
+COPY requirements.txt ./requirements.txt
 RUN pip install --upgrade pip \
     && pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
-COPY backend ${APP_ROOT}/backend
-COPY model.py ${APP_ROOT}/model.py
+COPY . ${APP_ROOT}
 
 ENV PYTHONPATH=${APP_ROOT}
-ENV PORT=8080
+ENV PORT=8001
 
-EXPOSE 8080
+EXPOSE 8001
 
-CMD ["python", "-m", "backend.main"]
+CMD ["python", "run_server.py"]

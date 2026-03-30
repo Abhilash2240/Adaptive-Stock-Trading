@@ -1,5 +1,5 @@
 {
-  "include": ["apps/client/src/**/*"],
+  "include": ["frontend/src/**/*"],
   "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
   "compilerOptions": {
     "incremental": true,
@@ -16,7 +16,7 @@
     "baseUrl": ".",
     "types": ["node", "vite/client"],
     "paths": {
-      "@/*": ["./apps/client/src/*"]
+      "@/*": ["./frontend/src/*"]
     }
   }
 }

@@ -49,5 +49,6 @@ if __name__ == "__main__":
         factory=True,
         host=host,
         port=port,
+        reload=False,
         log_level="info",
     )

@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
-export default defineConfig(async () => {
+export default defineConfig(async ({ command }) => {
   const plugins = [react(), runtimeErrorOverlay()];
 
   if (process.env.NODE_ENV !== "production" && process.env.REPL_ID !== undefined) {
@@ -26,7 +26,7 @@ export default defineConfig(async () => {
     );
   }
 
-  const rootDir = path.resolve(import.meta.dirname, "apps", "client");
+  const rootDir = path.resolve(import.meta.dirname, "frontend");
 
   return {
     plugins,
@@ -40,34 +40,51 @@ export default defineConfig(async () => {
     build: {
       outDir: path.resolve(rootDir, "dist"),
       emptyOutDir: true,
+      sourcemap: false,
     },
-    server: {
-      fs: {
-        strict: true,
-        deny: ["**/.*"],
-      },
-      proxy: {
-        "/api": {
-          target: "http://127.0.0.1:8001",
-          changeOrigin: true,
-        },
-        "/stream": {
-          target: "http://127.0.0.1:8001",
-          changeOrigin: true,
-        },
-        "/agent": {
-          target: "http://127.0.0.1:8001",
-          changeOrigin: true,
-        },
-        "/health": {
-          target: "http://127.0.0.1:8001",
-          changeOrigin: true,
-        },
-        "/ws": {
-          target: "ws://127.0.0.1:8001",
-          ws: true,
-        },
-      },
-    },
+    server:
+      command === "serve"
+        ? {
+            fs: {
+              strict: true,
+              deny: ["**/.*"],
+            },
+            proxy: {
+              "/api": {
+                target: "http://localhost:8001",
+                changeOrigin: true,
+              },
+              "/agent/": {
+                target: "http://localhost:8001",
+                changeOrigin: true,
+              },
+              "/health": {
+                target: "http://localhost:8001",
+                changeOrigin: true,
+              },
+              "/settings": {
+                target: "http://localhost:8001",
+                changeOrigin: true,
+              },
+              "/portfolio": {
+                target: "http://localhost:8001",
+                changeOrigin: true,
+              },
+              "/trades": {
+                target: "http://localhost:8001",
+                changeOrigin: true,
+              },
+              "/stream": {
+                target: "http://localhost:8001",
+                changeOrigin: true,
+              },
+              "/ws": {
+                target: "ws://localhost:8001",
+                ws: true,
+                changeOrigin: true,
+              },
+            },
+          }
+        : undefined,
   };
 });

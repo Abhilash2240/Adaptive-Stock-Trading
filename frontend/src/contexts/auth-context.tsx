@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { normalizeError, parseApiError } from '../lib/parse-api-error';
 
 interface User {
   id: string;
@@ -10,11 +11,12 @@ interface User {
 interface AuthContextType {
   user: User | null;
   token: string | null;
-  login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string) => Promise<string>;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string) => Promise<string>;
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
+  error: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,6 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const storedToken = localStorage.getItem('auth_token');
@@ -49,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const handleExpired = () => {
       setUser(null);
       setToken(null);
+      setError("Session expired");
     };
     window.addEventListener('auth:expired', handleExpired);
     return () => window.removeEventListener('auth:expired', handleExpired);
@@ -81,9 +85,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   /* ── Login: authenticate, fetch profile, land on dashboard ── */
-  const login = async (username: string, password: string) => {
+  const login = async (email: string, password: string) => {
     setIsLoading(true);
+    setError(null);
     try {
+      const username = email;
       const response = await fetch(resolveUrl('/api/v1/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -91,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       if (!response.ok) {
         const errBody = await response.json().catch(() => null);
-        throw new Error(errBody?.detail || 'Incorrect username or password');
+        throw new Error(parseApiError(errBody, 'Authentication failed'));
       }
       const data = await response.json();
       const accessToken = data.access_token;
@@ -108,9 +114,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setUser({ id: '', username, created_at: new Date().toISOString(), is_active: true });
       }
-    } catch (error) {
-      console.error('Login failed:', error);
-      throw error;
+    } catch (err) {
+      console.error('Login failed:', err);
+      setError(normalizeError(err));
+      throw err;
     } finally {
       setIsLoading(false);
     }
@@ -119,8 +126,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   /* ── Register: create account on server but do NOT log in.
        Returns the created username so the UI can show a success
        message and redirect the user to the sign-in form. ───── */
-  const register = async (username: string, password: string): Promise<string> => {
+  const register = async (email: string, password: string): Promise<string> => {
+    setError(null);
     try {
+      const username = email;
       const response = await fetch(resolveUrl('/api/v1/auth/register'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -128,7 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       if (!response.ok) {
         const errBody = await response.json().catch(() => null);
-        throw new Error(errBody?.detail || 'Registration failed');
+        throw new Error(parseApiError(errBody, 'Authentication failed'));
       }
       const data = await response.json();
       // Auto-login: backend returns access_token on register
@@ -146,15 +155,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
       return data.user?.username ?? username;
-    } catch (error) {
-      console.error('Registration failed:', error);
-      throw error;
+    } catch (err) {
+      console.error('Registration failed:', err);
+      setError(normalizeError(err));
+      throw err;
     }
   };
 
   const logout = () => {
     setUser(null);
     setToken(null);
+    setError(null);
     localStorage.removeItem('auth_token');
   };
 
@@ -166,6 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logout,
     isAuthenticated: !!user,
     isLoading,
+    error,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

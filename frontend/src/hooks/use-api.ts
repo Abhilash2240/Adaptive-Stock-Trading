@@ -67,7 +67,59 @@ export interface BackendLiveResponse {
 export interface AgentStatusResponse {
 	state: string;
 	model_version: string;
+	last_action?: {
+		symbol: string;
+		side: "BUY" | "SELL" | "HOLD";
+		confidence: number;
+		generated_at: string;
+	} | null;
+	epsilon?: number;
+	buffer_size?: number;
+	step_count?: number;
+	last_trained?: string | null;
 	updated_at: string;
+}
+
+export interface Position {
+	symbol: string;
+	quantity: number;
+	avg_price: number;
+	current_price: number;
+	unrealized_pnl: number;
+	unrealized_pnl_pct: number;
+}
+
+export interface PortfolioStateResponse {
+	user_id: string;
+	cash: number;
+	total_value: number;
+	unrealized_pnl: number;
+	positions: Position[];
+	updated_at: string;
+}
+
+export interface TradeRecord {
+	id: number;
+	user_id: string;
+	symbol: string;
+	side: "BUY" | "SELL" | "HOLD";
+	quantity: number;
+	price: number;
+	confidence: number;
+	executed_at: string;
+}
+
+export interface TradeFilters {
+	symbol?: string;
+	action?: "BUY" | "SELL" | "HOLD" | "ALL";
+	from?: string;
+	to?: string;
+}
+
+export interface TrainingResult {
+	loss: number | null;
+	epsilon: number;
+	steps: number;
 }
 
 export interface StreamSubscribePayload {
@@ -167,6 +219,47 @@ export function useSaveSettings() {
 		},
 		onSuccess: (data) => {
 			queryClient.setQueryData(["settings", data.userId], data);
+		},
+	});
+}
+
+export function usePortfolioState(enabled = true) {
+	return useQuery<PortfolioStateResponse>({
+		queryKey: ["portfolio-state"],
+		queryFn: () => requestJson<PortfolioStateResponse>("/portfolio"),
+		enabled,
+		refetchInterval: enabled ? 4000 : false,
+		staleTime: 3000,
+	});
+}
+
+export function useTradeHistory(page: number, filters: TradeFilters = {}) {
+	const limit = 20;
+	const offset = Math.max(0, (page - 1) * limit);
+	const params = new URLSearchParams();
+	params.set("limit", String(Math.max(limit, offset + limit)));
+	if (filters.symbol && filters.symbol !== "ALL") params.set("symbol", filters.symbol);
+	if (filters.action && filters.action !== "ALL") params.set("action", filters.action);
+	if (filters.from) params.set("from", filters.from);
+	if (filters.to) params.set("to", filters.to);
+
+	return useQuery<TradeRecord[]>({
+		queryKey: ["trade-history", page, filters],
+		queryFn: async () => {
+			const all = await requestJson<TradeRecord[]>(`/trades?${params.toString()}`);
+			return all.slice(offset, offset + limit);
+		},
+		staleTime: 2000,
+		refetchInterval: 4000,
+	});
+}
+
+export function useTrainStep() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: () => requestJson<TrainingResult>("/rl/train", { method: "POST" }),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["agent-status"] });
 		},
 	});
 }
