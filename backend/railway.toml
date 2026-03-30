@@ -2,7 +2,7 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "python run_server.py"
+startCommand = "sh -c 'gunicorn -k uvicorn.workers.UvicornWorker app:app --workers 2 --bind 0.0.0.0:$PORT'"
 healthcheckPath = "/health/live"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"
