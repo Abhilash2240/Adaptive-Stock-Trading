@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { Bell, Database, Moon, Settings, Sun } from "lucide-react";
+import { Bell, Database, LogOut, Moon, Settings, Sun, User } from "lucide-react";
+import { useAuth0 } from "@auth0/auth0-react";
 
 import { Sidebar } from "@/components/Sidebar";
 import { useTheme } from "@/components/theme-provider";
@@ -8,12 +9,14 @@ import { SaveSettingsPayload, useBackendReady, useSaveSettings, useSettings } fr
 
 export default function SettingsPage() {
   const [location, setLocation] = useLocation();
+  const { user, logout } = useAuth0();
   const { theme, setTheme } = useTheme();
   const { data: backendReady } = useBackendReady();
   const providerName = backendReady?.summary?.provider ?? "--";
-  const userId = "default";
+  const userId = user?.sub ?? "";
   const { data: userSettings } = useSettings(userId);
   const saveSettings = useSaveSettings();
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
 
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(
     userSettings?.notificationsEnabled ?? true,
@@ -28,7 +31,16 @@ export default function SettingsPage() {
     setGeminiEnabled(userSettings.geminiEnabled);
   }, [userSettings]);
 
+  const handleLogout = () => {
+    logout({
+      logoutParams: {
+        returnTo: window.location.origin,
+      },
+    });
+  };
+
   const persist = async (partial: Partial<SaveSettingsPayload>) => {
+    if (!userId) return;
     await saveSettings.mutateAsync({ userId, ...partial });
   };
 
@@ -47,11 +59,11 @@ export default function SettingsPage() {
 
         <section className="bg-[#12121a] border border-[#1e1e2e] rounded-xl p-5 space-y-4">
           <h2 className="font-semibold flex items-center gap-2"><User size={16} /> Account</h2>
-          <Row label="User" value={user?.username ?? "-"} />
-          <Row label="Status" value={user?.is_active ? "Active" : "Inactive"} />
+          <Row label="User" value={user?.email ?? "-"} />
+          <Row label="Status" value={user ? "Active" : "Signed out"} />
           <Row
             label="Created"
-            value={user?.created_at ? new Date(user.created_at).toLocaleDateString() : "-"}
+            value={user?.updated_at ? new Date(user.updated_at).toLocaleDateString() : "-"}
           />
         </section>
 

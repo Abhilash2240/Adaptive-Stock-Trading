@@ -62,7 +62,7 @@ function AppGate() {
 
 /* ─── Root ──────────────────────────────────────────────────────── */
 export default function App() {
-  const { getAccessTokenSilently } = useAuth0();
+  const { getAccessTokenSilently, isAuthenticated, isLoading, loginWithRedirect } = useAuth0();
 
   useEffect(() => {
     setTokenGetter(() =>
@@ -74,6 +74,39 @@ export default function App() {
     );
     return () => setTokenGetter(null);
   }, [getAccessTokenSilently]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background text-foreground grid place-items-center">
+        <p className="text-sm text-muted-foreground">Loading authentication...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background text-foreground grid place-items-center px-6">
+        <div className="rounded-xl border border-border bg-card p-6 text-center space-y-3 max-w-md w-full">
+          <h1 className="text-xl font-semibold">Sign in required</h1>
+          <p className="text-sm text-muted-foreground">
+            Please sign in to access real-time trading data and account settings.
+          </p>
+          <button
+            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm"
+            onClick={() =>
+              loginWithRedirect({
+                authorizationParams: {
+                  audience: import.meta.env.VITE_AUTH0_AUDIENCE,
+                },
+              })
+            }
+          >
+            Sign in
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ErrorBoundary>
