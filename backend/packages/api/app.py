@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+import logging
 import os
 
 from fastapi import Body, Depends, FastAPI, Query, Request, Response, WebSocket
@@ -34,11 +35,13 @@ from packages.shared.security import (
     audit_logger,
     limiter,
 )
-from .routes import auth, health, portfolio
+from .routes import health
+from .routes.portfolio import router as portfolio_router
 
 # Security setup
 security_scheme = HTTPBearer()
 validator = InputValidator()
+logger = logging.getLogger(__name__)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -60,10 +63,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         from packages.db.engine import init_db, close_db
         await init_db()
-        print("[OK] PostgreSQL database connected and tables ready.")
+        logger.info("PostgreSQL database connected and tables ready")
     except Exception as exc:
-        print(f"[WARN] Database init skipped: {exc}")
-        print("   Set DATABASE_URL in .env to enable persistence.")
+        logger.warning("Database init skipped: %s", exc)
 
     provider = get_data_provider()
     await provider.start()
@@ -124,9 +126,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved_settings
 
     # Include routers
-    app.include_router(auth.router, prefix="/api/v1") 
     app.include_router(getattr(health, "router", health))
-    app.include_router(portfolio.router)
+    app.include_router(portfolio_router)
 
     instrumentator = Instrumentator(should_ignore_untemplated=True)
     instrumentator.instrument(app).expose(
@@ -158,6 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # API status endpoint
     @app.get("/api/status")
+    @app.get("/api/v1/status")
     async def api_status():
         """Get API status and configuration."""
         return {
@@ -179,8 +181,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         }
 
+    @app.get("/api/v1/health/live")
+    async def api_v1_health_live() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/api/v1/health/ready")
+    async def api_v1_health_ready(
+        provider: DataProvider = Depends(get_data_provider),
+    ) -> dict[str, object]:
+        return {
+            "status": "ok",
+            "summary": {
+                "environment": resolved_settings.environment,
+                "provider": provider.name,
+            },
+        }
+
     # ── Stock quote REST endpoint (powered by Twelve Data) ────────
     @app.get("/api/quote")
+    @app.get("/api/v1/quotes")
     @limiter.limit("30/minute")
     async def get_quote(
         request: Request,
@@ -240,6 +259,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=502, detail=f"Twelve Data error: {exc}")
 
     @app.post("/stream")
+    @app.post("/api/v1/stream")
     @limiter.limit("10/minute")  # Rate limit stream requests
     async def request_stream(
         request: Request,
@@ -263,6 +283,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "subscribed"}
 
     @app.get("/settings", response_model=UserSettingsResponse)
+    @app.get("/api/v1/settings", response_model=UserSettingsResponse)
     async def get_settings_route(
         userId: str = Query(...),
         current_user: AuthenticatedUser = Depends(get_current_user),
@@ -278,6 +299,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return UserSettingsResponse.from_db(row)
 
     @app.post("/settings", response_model=UserSettingsResponse)
+    @app.post("/api/v1/settings", response_model=UserSettingsResponse)
     async def save_settings_route(
         payload: SaveSettingsPayload,
         current_user: AuthenticatedUser = Depends(get_current_user),
@@ -315,16 +337,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return
 
         try:
-            if resolved_settings.auth0_domain and resolved_settings.auth0_audience:
-                payload = verify_auth0_token(token, resolved_settings)
-                user_id = str(payload.get("sub") or "")
-            else:
-                # Keep local dev/test compatibility when Auth0 is not configured.
-                from packages.shared.security import JWTManager
-
-                ws_jwt = JWTManager(resolved_settings)
-                token_data = ws_jwt.verify_token(token)
-                user_id = token_data.username
+            payload = verify_auth0_token(token, resolved_settings)
+            user_id = str(payload.get("sub") or "")
 
             if not user_id:
                 await websocket.accept()
@@ -385,6 +399,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             websocket_closed(endpoint, code="complete")
 
     @app.get("/agent/status", response_model=AgentStatus)
+    @app.get("/api/v1/agent", response_model=AgentStatus)
     @limiter.limit("30/minute")  # Rate limit agent status requests
     async def agent_status(
         request: Request,
@@ -399,6 +414,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await agent.status()
 
     @app.post("/agent/action", response_model=AgentAction)
+    @app.post("/api/v1/agent/action", response_model=AgentAction)
     async def get_agent_action(
         symbol: str,
         portfolio: dict = Body(...),
@@ -408,6 +424,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return agent.get_action(symbol=symbol, portfolio=portfolio)
 
     @app.post("/rl/train", response_model=dict)
+    @app.post("/api/v1/rl/train", response_model=dict)
     async def trigger_training(
         current_user: AuthenticatedUser = Depends(get_current_user),
         agent: AgentService = Depends(get_agent_service),

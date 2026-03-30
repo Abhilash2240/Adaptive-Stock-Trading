@@ -3,7 +3,7 @@ from pathlib import Path
 import secrets as _secrets
 
 from pydantic import model_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Locate the project root .env (two levels up from this file)
 _THIS_DIR = Path(__file__).resolve().parent          # packages/shared/
@@ -17,6 +17,12 @@ for candidate in [_BACKEND_DIR / ".env", _PROJECT_ROOT / ".env", Path(".env")]:
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=_ENV_FILES or ".env",
+        case_sensitive=False,
+        protected_namespaces=("settings_",),
+    )
+
     environment: str = "development"
     port: int = 8001
     database_url: str = ""
@@ -44,10 +50,6 @@ class Settings(BaseSettings):
     trust_proxy: bool = False
     auth0_domain: str = ""
     auth0_audience: str = ""
-
-    class Config:
-        env_file = _ENV_FILES or ".env"
-        case_sensitive = False
 
     @model_validator(mode="after")
     def apply_provider_defaults(self) -> "Settings":

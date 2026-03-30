@@ -7,6 +7,7 @@ Handles VS Code terminal SIGBREAK on Windows gracefully.
 import sys
 import os
 import signal
+import logging
 from pathlib import Path
 
 # Add the backend directory to Python path
@@ -32,17 +33,13 @@ if __name__ == "__main__":
         )
 
     import uvicorn
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
 
     port = int(os.environ.get("PORT", 8001))
     host = os.environ.get("HOST", "0.0.0.0")
 
-    print("Starting Adaptive Stock Trading Server")
-    print("=" * 50)
-    print(f"Backend Directory: {backend_dir}")
-    print(f"Server URL: http://{host}:{port}")
-    print(f"API Docs: http://{host}:{port}/docs")
-    print("=" * 50)
-    sys.stdout.flush()
+    logger.info("Starting adaptive stock trading server on %s:%s", host, port)
 
     uvicorn.run(
         "packages.api.app:create_app",

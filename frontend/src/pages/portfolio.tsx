@@ -1,13 +1,11 @@
 import { useLocation } from "wouter";
 
 import { Sidebar } from "@/components/Sidebar";
-import { useAuth } from "@/contexts/auth-context";
 import { usePortfolioState } from "@/hooks/use-api";
 
 export default function PortfolioPage() {
   const [location, setLocation] = useLocation();
-  const { user, logout, isAuthenticated } = useAuth();
-  const { data, isLoading } = usePortfolioState(isAuthenticated);
+  const { data, isLoading } = usePortfolioState(true);
 
   const totalValue = data?.total_value ?? 0;
   const cash = data?.cash ?? 0;
@@ -20,8 +18,6 @@ export default function PortfolioPage() {
       <Sidebar
         activeRoute={location}
         onNavigate={setLocation}
-        userEmail={user?.username ?? ""}
-        onSignOut={logout}
       />
 
       <main className="ml-60 p-6 space-y-6">

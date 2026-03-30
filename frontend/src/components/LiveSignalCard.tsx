@@ -1,6 +1,5 @@
 import { useState } from "react";
 
-import { useAuth } from "@/contexts/auth-context";
 import { LiveTick, useTradingWebSocket } from "@/hooks/use-trading-websocket";
 
 const ACTION_STYLES: Record<string, string> = {
@@ -14,11 +13,10 @@ interface Props {
 }
 
 export function LiveSignalCard({ symbol = "AAPL" }: Props) {
-  const { isAuthenticated } = useAuth();
   const [tick, setTick] = useState<LiveTick | null>(null);
 
   useTradingWebSocket({
-    enabled: isAuthenticated,
+    enabled: true,
     onTick: (incoming) => {
       if (!symbol || incoming.symbol === symbol) {
         setTick(incoming);

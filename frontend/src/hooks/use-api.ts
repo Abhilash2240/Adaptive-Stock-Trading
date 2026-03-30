@@ -19,19 +19,23 @@ export function setTokenGetter(fn: (() => Promise<string>) | null): void {
 	tokenGetter = fn;
 }
 
-async function getAuthHeaders(): Promise<Record<string, string>> {
+export async function getAccessTokenForApi(): Promise<string> {
 	if (!tokenGetter) {
-		return {};
+		throw new Error("Auth0 token getter is not configured");
 	}
-	try {
-		const token = await tokenGetter();
-		return token ? { Authorization: `Bearer ${token}` } : {};
-	} catch {
-		return {};
+	const token = await tokenGetter();
+	if (!token) {
+		throw new Error("Missing Auth0 access token");
 	}
+	return token;
 }
 
-async function request(path: string, init: RequestInit = {}): Promise<Response> {
+async function getAuthHeaders(): Promise<Record<string, string>> {
+	const token = await getAccessTokenForApi();
+	return { Authorization: `Bearer ${token}` };
+}
+
+async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
 	const authHeaders = await getAuthHeaders();
 	const response = await fetch(resolveUrl(path), {
 		credentials: "include",
@@ -46,6 +50,7 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
 
 	if (!response.ok) {
 		const errBody = await response.json().catch(() => null);
+		console.error("[API ERROR]", response.status, errBody);
 		throw new Error(parseApiError(errBody, `Request failed with status ${response.status}`));
 	}
 
@@ -53,7 +58,7 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
 }
 
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
-	const response = await request(path, init);
+	const response = await apiFetch(path, init);
 	if (response.status === 204) {
 		return undefined as unknown as T;
 	}
@@ -117,6 +122,14 @@ export interface TradeRecord {
 	executed_at: string;
 }
 
+export interface CreateTradePayload {
+	symbol: string;
+	side: "BUY" | "SELL";
+	quantity: number;
+	price: number;
+	confidence: number;
+}
+
 export interface TradeFilters {
 	symbol?: string;
 	action?: "BUY" | "SELL" | "HOLD" | "ALL";
@@ -164,7 +177,7 @@ export function resolveWebSocketUrl(): string {
 export function useBackendReady() {
 	return useQuery<BackendReadyResponse>({
 		queryKey: ["backend-ready"],
-		queryFn: () => requestJson<BackendReadyResponse>("/health/ready"),
+		queryFn: () => requestJson<BackendReadyResponse>("/api/v1/health/ready"),
 		refetchInterval: 15000,
 		staleTime: 15000,
 		retry: 2,
@@ -174,7 +187,7 @@ export function useBackendReady() {
 export function useBackendLive() {
 	return useQuery<BackendLiveResponse>({
 		queryKey: ["backend-live"],
-		queryFn: () => requestJson<BackendLiveResponse>("/health/live"),
+		queryFn: () => requestJson<BackendLiveResponse>("/api/v1/health/live"),
 		refetchInterval: 30000,
 		staleTime: 30000,
 	});
@@ -183,7 +196,7 @@ export function useBackendLive() {
 export function useAgentStatus(enabled = true) {
 	return useQuery<AgentStatusResponse>({
 		queryKey: ["agent-status"],
-		queryFn: () => requestJson<AgentStatusResponse>("/agent/status"),
+		queryFn: () => requestJson<AgentStatusResponse>("/api/v1/agent"),
 		refetchInterval: enabled ? 4000 : false,
 		enabled,
 		retry: 1,
@@ -193,7 +206,7 @@ export function useAgentStatus(enabled = true) {
 export function useSubscribeToStream() {
 	return useMutation({
 		mutationFn: async ({ symbol, channel = "quotes" }: StreamSubscribePayload) => {
-			await request("/stream", {
+			await apiFetch("/api/v1/stream", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
@@ -208,7 +221,7 @@ export function useSettings(userId: string) {
 	return useQuery<UserSettingsResponse>({
 		queryKey: ["settings", userId],
 		enabled: Boolean(userId),
-		queryFn: () => requestJson<UserSettingsResponse>(`/settings?userId=${encodeURIComponent(userId)}`),
+		queryFn: () => requestJson<UserSettingsResponse>(`/api/v1/settings?userId=${encodeURIComponent(userId)}`),
 		staleTime: 60_000,
 	});
 }
@@ -217,7 +230,7 @@ export function useSaveSettings() {
 	const queryClient = useQueryClient();
 	return useMutation({
 		mutationFn: async (payload: SaveSettingsPayload) => {
-			return requestJson<UserSettingsResponse>("/settings", {
+			return requestJson<UserSettingsResponse>("/api/v1/settings", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
@@ -234,7 +247,7 @@ export function useSaveSettings() {
 export function usePortfolioState(enabled = true) {
 	return useQuery<PortfolioStateResponse>({
 		queryKey: ["portfolio-state"],
-		queryFn: () => requestJson<PortfolioStateResponse>("/portfolio"),
+		queryFn: () => requestJson<PortfolioStateResponse>("/api/v1/portfolio"),
 		enabled,
 		refetchInterval: enabled ? 4000 : false,
 		staleTime: 3000,
@@ -254,7 +267,7 @@ export function useTradeHistory(page: number, filters: TradeFilters = {}) {
 	return useQuery<TradeRecord[]>({
 		queryKey: ["trade-history", page, filters],
 		queryFn: async () => {
-			const all = await requestJson<TradeRecord[]>(`/trades?${params.toString()}`);
+			const all = await requestJson<TradeRecord[]>(`/api/v1/trades?${params.toString()}`);
 			return all.slice(offset, offset + limit);
 		},
 		staleTime: 2000,
@@ -265,9 +278,24 @@ export function useTradeHistory(page: number, filters: TradeFilters = {}) {
 export function useTrainStep() {
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: () => requestJson<TrainingResult>("/rl/train", { method: "POST" }),
+		mutationFn: () => requestJson<TrainingResult>("/api/v1/rl/train", { method: "POST" }),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["agent-status"] });
+		},
+	});
+}
+
+export function useCreateTrade() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (payload: CreateTradePayload) =>
+			requestJson<TradeRecord>("/api/v1/trades", {
+				method: "POST",
+				body: JSON.stringify(payload),
+			}),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["trade-history"] });
+			queryClient.invalidateQueries({ queryKey: ["portfolio-state"] });
 		},
 	});
 }

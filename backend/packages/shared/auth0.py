@@ -1,30 +1,25 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
 import requests
-from fastapi import Depends, HTTPException, Security, status
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
-from pydantic import BaseModel
 
 from packages.shared.config import Settings, get_settings
 
-ALGORITHMS = ["RS256"]
-security = HTTPBearer()
 
-
-class AuthenticatedUser(BaseModel):
+@dataclass
+class AuthenticatedUser:
     id: str
-    email: str = ""
-    sub: str = ""
-    name: str = ""
-    picture: str = ""
+    sub: str
+    email: str | None = None
 
 
-def _auth0_enabled(settings: Settings) -> bool:
-    return bool(settings.auth0_domain and settings.auth0_audience)
+security_scheme = HTTPBearer(auto_error=True)
 
 
 @lru_cache(maxsize=4)
@@ -35,16 +30,15 @@ def _get_jwks(domain: str) -> dict[str, Any]:
     return response.json()
 
 
-def verify_auth0_token(token: str, settings: Settings | None = None) -> dict[str, Any]:
-    resolved = settings or get_settings()
-    if not _auth0_enabled(resolved):
+def verify_auth0_token(token: str, settings: Settings) -> dict:
+    if not settings.auth0_domain or not settings.auth0_audience:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Auth0 is not configured",
         )
 
     try:
-        jwks = _get_jwks(resolved.auth0_domain)
+        jwks = _get_jwks(settings.auth0_domain)
         unverified_header = jwt.get_unverified_header(token)
 
         rsa_key: dict[str, str] = {}
@@ -68,9 +62,9 @@ def verify_auth0_token(token: str, settings: Settings | None = None) -> dict[str
         payload = jwt.decode(
             token,
             rsa_key,
-            algorithms=ALGORITHMS,
-            audience=resolved.auth0_audience,
-            issuer=f"https://{resolved.auth0_domain}/",
+            algorithms=["RS256"],
+            audience=settings.auth0_audience,
+            issuer=f"https://{settings.auth0_domain}/",
         )
         return payload
     except HTTPException:
@@ -79,35 +73,23 @@ def verify_auth0_token(token: str, settings: Settings | None = None) -> dict[str
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid token: {str(exc)}",
-        )
+        ) from exc
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Security(security),
+    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
     settings: Settings = Depends(get_settings),
 ) -> AuthenticatedUser:
-    token = credentials.credentials
-
-    # Auth0-first auth path.
-    if _auth0_enabled(settings):
-        payload = verify_auth0_token(token, settings)
-        sub = str(payload.get("sub") or "")
-        return AuthenticatedUser(
-            id=sub,
-            sub=sub,
-            email=str(payload.get("email") or ""),
-            name=str(payload.get("name") or ""),
-            picture=str(payload.get("picture") or ""),
+    payload = verify_auth0_token(credentials.credentials, settings)
+    sub = str(payload.get("sub") or "")
+    if not sub:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
         )
 
-    # Dev/test fallback for legacy local JWT flow when Auth0 is not configured.
-    from packages.shared.security import get_current_user as legacy_get_current_user
-
-    legacy_user = await legacy_get_current_user(credentials=credentials, settings=settings)
     return AuthenticatedUser(
-        id=str(legacy_user.id),
-        sub=str(legacy_user.id),
-        email=legacy_user.username,
-        name=legacy_user.username,
-        picture="",
+        id=sub,
+        sub=sub,
+        email=str(payload.get("email") or ""),
     )

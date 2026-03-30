@@ -41,8 +41,12 @@ export function useTradingWebSocket({
           audience: import.meta.env.VITE_AUTH0_AUDIENCE,
         },
       });
-    } catch {
-      console.error("[WS] failed to get token");
+      if (!token) {
+        console.error("[WS] token fetch returned empty token");
+        return;
+      }
+    } catch (error) {
+      console.error("[WS] failed to get token", error);
       return;
     }
 

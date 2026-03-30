@@ -2,14 +2,12 @@ import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 
 import { Sidebar } from "@/components/Sidebar";
-import { useAuth } from "@/contexts/auth-context";
 import { TradeFilters, useTradeHistory } from "@/hooks/use-api";
 
 const PAGE_SIZE = 20;
 
 export default function TradesPage() {
   const [location, setLocation] = useLocation();
-  const { user, logout } = useAuth();
 
   const [page, setPage] = useState(1);
   const [symbol, setSymbol] = useState("ALL");
@@ -23,15 +21,14 @@ export default function TradesPage() {
     [symbol, action],
   );
 
-  const { data = [], isLoading } = useTradeHistory(page, filters);
+  const { data, isLoading } = useTradeHistory(page, filters);
+  const rows = Array.isArray(data) ? data : [];
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-[#f1f5f9]">
       <Sidebar
         activeRoute={location}
         onNavigate={setLocation}
-        userEmail={user?.username ?? ""}
-        onSignOut={logout}
       />
 
       <main className="ml-60 p-6 space-y-6">
@@ -50,7 +47,7 @@ export default function TradesPage() {
         <section className="bg-[#12121a] border border-[#1e1e2e] rounded-xl p-4">
           {isLoading ? (
             <p className="text-sm text-[#94a3b8]">Loading trades...</p>
-          ) : data.length === 0 ? (
+          ) : rows.length === 0 ? (
             <p className="text-sm text-[#94a3b8]">No trades match your filters.</p>
           ) : (
             <table className="w-full text-sm">
@@ -66,7 +63,7 @@ export default function TradesPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.map((t) => (
+                {rows.map((t) => (
                   <tr key={t.id} className="border-b border-[#1e1e2e] hover:bg-[rgba(255,255,255,0.02)]">
                     <td className="py-2 font-mono">{new Date(t.executed_at).toLocaleString()}</td>
                     <td className="py-2">{t.symbol}</td>
@@ -91,7 +88,7 @@ export default function TradesPage() {
             </button>
             <button
               className="px-3 py-1.5 rounded-md bg-[#1e1e2e] text-sm disabled:opacity-40"
-              disabled={data.length < PAGE_SIZE}
+              disabled={rows.length < PAGE_SIZE}
               onClick={() => setPage((p) => p + 1)}
             >
               Next

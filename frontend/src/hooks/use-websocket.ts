@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { captureMonitoringException } from "@/lib/monitoring";
+import { getAccessTokenForApi } from "@/hooks/use-api";
 
 export type ConnectionStatus = "connected" | "disconnected" | "reconnecting";
 
@@ -42,12 +43,17 @@ function getBackoff(attempt: number): number {
 async function isBackendReachable(): Promise<boolean> {
   const base = ((import.meta.env as any).VITE_API_BASE ?? "").replace(/\/$/, "");
   try {
-    const res = await fetch(`${base}/api/status`, {
+    const token = await getAccessTokenForApi();
+    const res = await fetch(`${base}/api/v1/status`, {
       method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
       signal: AbortSignal.timeout(3000),
     });
     return res.ok;
-  } catch {
+  } catch (error) {
+    console.error("[WS] backend reachability check failed", error);
     return false;
   }
 }
@@ -73,7 +79,7 @@ export function useWebSocket<TMessage = unknown>(
     onMessageRef.current = options.onMessage;
   }, [options.onMessage]);
 
-  const resolveUrl = useCallback((): string => {
+  const resolveUrl = useCallback((token: string): string => {
     let base: string;
     if (explicitUrl) {
       base = explicitUrl;
@@ -88,13 +94,8 @@ export function useWebSocket<TMessage = unknown>(
       }
     }
 
-    // Attach JWT token so backend authenticates the WebSocket
-    const token = localStorage.getItem("auth_token");
-    if (token) {
-      const sep = base.includes("?") ? "&" : "?";
-      return `${base}${sep}token=${encodeURIComponent(token)}`;
-    }
-    return base;
+    const sep = base.includes("?") ? "&" : "?";
+    return `${base}${sep}token=${encodeURIComponent(token)}`;
   }, [explicitUrl]);
 
   const cleanupReconnect = useCallback(() => {
@@ -115,7 +116,7 @@ export function useWebSocket<TMessage = unknown>(
     }
 
     const delay = getBackoff(attempt);
-    console.log(`[WS] Reconnecting in ${delay}ms (attempt ${attempt + 1})…`);
+    console.info(`[WS] Reconnecting in ${delay}ms (attempt ${attempt + 1})…`);
     setStatus("reconnecting");
     setReconnectAttempt(attempt + 1);
 
@@ -126,7 +127,7 @@ export function useWebSocket<TMessage = unknown>(
       // attempt so we don't open a socket that will instantly die.
       const reachable = await isBackendReachable();
       if (!reachable) {
-        console.log("[WS] Backend not reachable yet, delaying…");
+        console.warn("[WS] Backend not reachable yet, delaying...");
         attemptRef.current += 1;
         scheduleReconnect();
         return;
@@ -137,9 +138,23 @@ export function useWebSocket<TMessage = unknown>(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cleanupReconnect, maxRetries]);
 
-  const connectWs = useCallback(() => {
+  const connectWs = useCallback(async () => {
     cleanupReconnect();
-    const targetUrl = resolveUrl();
+    let token = "";
+    try {
+      token = await getAccessTokenForApi();
+    } catch (error) {
+      console.error("[WS] token fetch failed", error);
+      setStatus("disconnected");
+      return;
+    }
+    if (!token) {
+      console.error("[WS] refusing websocket connect without token");
+      setStatus("disconnected");
+      return;
+    }
+
+    const targetUrl = resolveUrl(token);
 
     try {
       if (wsRef.current) {
@@ -156,7 +171,7 @@ export function useWebSocket<TMessage = unknown>(
         attemptRef.current = 0;
         setReconnectAttempt(0);
         setStatus("connected");
-        console.log("[WS] Connected.");
+        console.info("[WS] Connected.");
       };
 
       ws.onmessage = (event) => {
@@ -198,7 +213,7 @@ export function useWebSocket<TMessage = unknown>(
       };
     } catch (error) {
       console.error("[WS] Failed to create connection", error);
-      captureMonitoringException(error, { stage: "create", endpoint: resolveUrl() });
+      captureMonitoringException(error, { stage: "create", endpoint: targetUrl });
       attemptRef.current += 1;
       scheduleReconnect();
     }
@@ -225,7 +240,7 @@ export function useWebSocket<TMessage = unknown>(
   useEffect(() => {
     function onVisibilityChange() {
       if (document.visibilityState === "visible" && status !== "connected") {
-        console.log("[WS] Tab visible again – reconnecting.");
+        console.info("[WS] Tab visible again, reconnecting.");
         attemptRef.current = 0;
         connectWs();
       }

@@ -3,11 +3,11 @@ import { useLocation } from "wouter";
 import { Bot, Cpu } from "lucide-react";
 
 import { Sidebar } from "@/components/Sidebar";
-import { useAuth } from "@/contexts/auth-context";
 import {
   AgentStatusResponse,
   TradeRecord,
   useAgentStatus,
+  useCreateTrade,
   usePortfolioState,
   useTradeHistory,
 } from "@/hooks/use-api";
@@ -34,8 +34,9 @@ interface DashboardProps {
   recentTrades: TradeRecord[];
   wsConnected: boolean;
   onNavigate: (route: string) => void;
-  userEmail: string;
-  onSignOut: () => void;
+  onPlaceTrade: (payload: { side: "BUY" | "SELL"; quantity: number; confidence: number }) => Promise<void>;
+  placingTrade: boolean;
+  tradeError: string | null;
 }
 
 export function Dashboard(props: DashboardProps) {
@@ -61,23 +62,25 @@ export function Dashboard(props: DashboardProps) {
   const maxQ = Math.max(qValues.BUY, qValues.SELL, qValues.HOLD, 0.01);
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-[#f1f5f9]">
+    <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
+      <div className="pointer-events-none absolute inset-0 opacity-90">
+        <div className="absolute -top-40 -left-16 h-96 w-96 rounded-full bg-[radial-gradient(circle_at_center,hsl(var(--primary)/0.35),transparent_65%)]" />
+        <div className="absolute top-40 -right-24 h-[28rem] w-[28rem] rounded-full bg-[radial-gradient(circle_at_center,hsl(var(--accent)/0.22),transparent_65%)]" />
+      </div>
       <Sidebar
         activeRoute={path}
         onNavigate={props.onNavigate}
-        userEmail={props.userEmail}
-        onSignOut={props.onSignOut}
       />
 
-      <main className="ml-60 p-6 space-y-6">
+      <main className="relative ml-60 space-y-6 p-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Adaptive Dashboard</h1>
           <div className="flex items-center gap-4 text-sm">
             <div className="flex items-center gap-2">
-              <span className={["h-2.5 w-2.5 rounded-full", props.wsConnected ? "bg-[#22c55e] animate-pulse" : "bg-[#475569]"].join(" ")} />
-              <span className="text-[#94a3b8]">{props.wsConnected ? "Live" : "Offline"}</span>
+              <span className={["h-2.5 w-2.5 rounded-full", props.wsConnected ? "bg-[hsl(var(--accent))] animate-pulse" : "bg-muted-foreground/60"].join(" ")} />
+              <span className="text-muted-foreground">{props.wsConnected ? "Live" : "Offline"}</span>
             </div>
-            <span className="text-[#475569]">|</span>
+            <span className="text-muted-foreground/60">|</span>
             <span className="font-mono">{now.toLocaleTimeString()}</span>
           </div>
         </div>
@@ -90,16 +93,16 @@ export function Dashboard(props: DashboardProps) {
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          <section className="xl:col-span-2 bg-[#12121a] border border-[#1e1e2e] rounded-xl p-4">
+          <section className="xl:col-span-2 rounded-xl border border-border/80 bg-card/80 p-4 shadow-lg backdrop-blur-sm">
             <div className="flex items-baseline justify-between">
               <div>
                 <h2 className="font-semibold text-lg">{props.currentSymbol}</h2>
-                <p className="text-sm text-[#94a3b8]">{fmt(props.currentPrice)}</p>
+                <p className="text-sm text-muted-foreground">{fmt(props.currentPrice)}</p>
               </div>
-              <p className={props.priceChange >= 0 ? "text-[#22c55e]" : "text-[#ef4444]"}>{signed(props.priceChange)} ({signedPct(props.priceChangePct)})</p>
+              <p className={props.priceChange >= 0 ? "text-emerald-500" : "text-rose-500"}>{signed(props.priceChange)} ({signedPct(props.priceChangePct)})</p>
             </div>
 
-            <div className="mt-3 bg-[#0d0d14] rounded-lg h-72 border border-[#1e1e2e] p-3">
+            <div className="mt-3 h-72 rounded-lg border border-border/70 bg-background/70 p-3">
               <Sparkline values={props.priceHistory} />
             </div>
 
@@ -110,7 +113,7 @@ export function Dashboard(props: DashboardProps) {
                   onClick={() => props.onSymbolChange(s)}
                   className={[
                     "px-3 py-1.5 rounded-md text-sm transition-all duration-150",
-                    props.currentSymbol === s ? "bg-[#6366f1] text-white" : "text-[#94a3b8] hover:bg-[#1e1e2e]",
+                    props.currentSymbol === s ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary",
                   ].join(" ")}
                 >
                   {s}
@@ -119,25 +122,25 @@ export function Dashboard(props: DashboardProps) {
             </div>
           </section>
 
-          <section className="bg-[#12121a] border border-[#1e1e2e] rounded-xl p-4">
-            <h3 className="font-semibold flex items-center gap-2"><Cpu size={16} className="text-[#6366f1]" />AI Signal</h3>
+          <section className="rounded-xl border border-border/80 bg-card/80 p-4 shadow-lg backdrop-blur-sm">
+            <h3 className="flex items-center gap-2 font-semibold"><Cpu size={16} className="text-primary" />AI Signal</h3>
             <div className="mt-4 text-center">
               <span className={badgeClass(props.latestTick?.action_signal)}>{props.latestTick?.action_signal ?? "HOLD"}</span>
             </div>
-            <div className="mt-4 text-sm text-[#94a3b8] flex justify-between">
+            <div className="mt-4 flex justify-between text-sm text-muted-foreground">
               <span>Confidence</span>
               <span>{Math.round((props.latestTick?.confidence ?? 0) * 100)}%</span>
             </div>
-            <div className="h-2 bg-[#1e1e2e] rounded overflow-hidden mt-2">
+            <div className="mt-2 h-2 overflow-hidden rounded bg-secondary">
               <div className="h-full transition-all duration-300" style={{ width: `${Math.round((props.latestTick?.confidence ?? 0) * 100)}%`, backgroundColor: signalColor(props.latestTick?.action_signal) }} />
             </div>
 
             <div className="mt-5 space-y-2 text-xs">
               {(["HOLD", "BUY", "SELL"] as const).map((k) => (
                 <div key={k} className="grid grid-cols-[40px,1fr,50px] items-center gap-2">
-                  <span className={props.latestTick?.action_signal === k ? "text-white" : "text-[#94a3b8]"}>{k}</span>
-                  <div className="h-1.5 bg-[#1e1e2e] rounded overflow-hidden">
-                    <div className="h-full" style={{ width: `${Math.round((qValues[k] / maxQ) * 100)}%`, background: props.latestTick?.action_signal === k ? signalColor(k) : "#6366f1" }} />
+                  <span className={props.latestTick?.action_signal === k ? "text-foreground" : "text-muted-foreground"}>{k}</span>
+                  <div className="h-1.5 overflow-hidden rounded bg-secondary">
+                    <div className="h-full" style={{ width: `${Math.round((qValues[k] / maxQ) * 100)}%`, background: props.latestTick?.action_signal === k ? signalColor(k) : "hsl(var(--primary))" }} />
                   </div>
                   <span className="font-mono text-right">{qValues[k].toFixed(3)}</span>
                 </div>
@@ -150,24 +153,32 @@ export function Dashboard(props: DashboardProps) {
               <MiniStat label="buffer" value={String(props.agentStatus?.buffer_size ?? "-")} />
               <MiniStat label="model" value={props.agentStatus?.model_version ?? "-"} />
             </div>
+
+            <TradeComposer
+              symbol={props.currentSymbol}
+              price={props.currentPrice}
+              onSubmit={props.onPlaceTrade}
+              loading={props.placingTrade}
+              error={props.tradeError}
+            />
           </section>
         </div>
 
-        <section className="bg-[#12121a] border border-[#1e1e2e] rounded-xl p-4">
+        <section className="rounded-xl border border-border/80 bg-card/80 p-4 shadow-lg backdrop-blur-sm">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold">Recent Trades</h3>
-            <button onClick={() => setLocation("/trades")} className="text-[#6366f1] text-sm">View All →</button>
+            <button onClick={() => setLocation("/trades")} className="text-sm text-primary">View All →</button>
           </div>
 
           {props.recentTrades.length === 0 ? (
-            <div className="py-10 text-center text-[#94a3b8]">
-              <Bot className="mx-auto mb-2 text-[#6366f1]" />
+            <div className="py-10 text-center text-muted-foreground">
+              <Bot className="mx-auto mb-2 text-primary" />
               No trades yet — the AI agent is collecting market data
             </div>
           ) : (
             <table className="w-full mt-3 text-sm">
-              <thead className="text-[#94a3b8] text-xs">
-                <tr className="border-b border-[#1e1e2e]">
+              <thead className="text-xs text-muted-foreground">
+                <tr className="border-b border-border/80">
                   <th className="text-left py-2">Time</th>
                   <th className="text-left py-2">Symbol</th>
                   <th className="text-left py-2">Action</th>
@@ -178,13 +189,13 @@ export function Dashboard(props: DashboardProps) {
               </thead>
               <tbody>
                 {props.recentTrades.map((t) => (
-                  <tr key={t.id} className="border-b border-[#1e1e2e] hover:bg-[rgba(255,255,255,0.02)]">
+                  <tr key={t.id} className="border-b border-border/70 hover:bg-secondary/40">
                     <td className="py-2 font-mono">{new Date(t.executed_at).toLocaleTimeString()}</td>
                     <td className="py-2">{t.symbol}</td>
                     <td className="py-2"><span className={badgeClass(t.side)}>{t.side}</span></td>
                     <td className="py-2 font-mono">{t.quantity}</td>
                     <td className="py-2 font-mono">{fmt(t.price)}</td>
-                    <td className="py-2 text-[#94a3b8]">{Math.round((t.confidence ?? 0) * 100)}%</td>
+                    <td className="py-2 text-muted-foreground">{Math.round((t.confidence ?? 0) * 100)}%</td>
                   </tr>
                 ))}
               </tbody>
@@ -212,7 +223,7 @@ function signedMoney(n: number) {
 function signalColor(side?: string) {
   if (side === "BUY") return "#22c55e";
   if (side === "SELL") return "#ef4444";
-  return "#f59e0b";
+  return "#eab308";
 }
 
 function badgeClass(side?: string) {
@@ -225,20 +236,20 @@ function badgeClass(side?: string) {
 function StatCard({ label, value, delta, sub, positive }: { label: string; value: string; delta?: string; sub?: string; positive?: boolean }) {
   return (
     <div className={[
-      "bg-[#12121a] border border-[#1e1e2e] rounded-xl p-5",
+      "rounded-xl border border-border/80 bg-card/80 p-5 shadow-md backdrop-blur-sm",
       positive == null ? "" : positive ? "shadow-[0_0_12px_rgba(34,197,94,0.15)]" : "shadow-[0_0_12px_rgba(239,68,68,0.15)]",
     ].join(" ")}>
-      <p className="text-[#94a3b8] text-[11px] uppercase tracking-wide">{label}</p>
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="text-2xl font-bold tabular-nums mt-1">{value}</p>
-      {delta && <p className={positive === false ? "text-[#ef4444] text-sm mt-1" : "text-[#22c55e] text-sm mt-1"}>{delta}</p>}
-      {sub && <p className="text-[#94a3b8] text-sm mt-1">{sub}</p>}
+      {delta && <p className={positive === false ? "mt-1 text-sm text-rose-500" : "mt-1 text-sm text-emerald-500"}>{delta}</p>}
+      {sub && <p className="mt-1 text-sm text-muted-foreground">{sub}</p>}
     </div>
   );
 }
 
 function Sparkline({ values }: { values: number[] }) {
   if (!values.length) {
-    return <div className="h-full grid place-items-center text-[#475569] text-sm">Waiting for ticks...</div>;
+    return <div className="grid h-full place-items-center text-sm text-muted-foreground">Waiting for ticks...</div>;
   }
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -251,31 +262,110 @@ function Sparkline({ values }: { values: number[] }) {
 
   return (
     <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full">
-      <polyline fill="rgba(99,102,241,0.08)" stroke="none" points={`0,100 ${points.join(" ")} 100,100`} />
-      <polyline fill="none" stroke="#6366f1" strokeWidth="1.5" points={points.join(" ")} />
+      <polyline fill="hsl(var(--primary)/0.09)" stroke="none" points={`0,100 ${points.join(" ")} 100,100`} />
+      <polyline fill="none" stroke="hsl(var(--primary))" strokeWidth="1.5" points={points.join(" ")} />
     </svg>
   );
 }
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-[#0d0d14] border border-[#1e1e2e] rounded-lg p-2">
-      <p className="text-[#94a3b8] text-[11px]">{label}</p>
-      <p className="text-[#6366f1] font-mono text-xs truncate">{value}</p>
+    <div className="rounded-lg border border-border/70 bg-background/60 p-2">
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <p className="truncate font-mono text-xs text-primary">{value}</p>
+    </div>
+  );
+}
+
+function TradeComposer({
+  symbol,
+  price,
+  onSubmit,
+  loading,
+  error,
+}: {
+  symbol: string;
+  price: number;
+  onSubmit: (payload: { side: "BUY" | "SELL"; quantity: number; confidence: number }) => Promise<void>;
+  loading: boolean;
+  error: string | null;
+}) {
+  const [side, setSide] = useState<"BUY" | "SELL">("BUY");
+  const [quantity, setQuantity] = useState(1);
+  const [confidence, setConfidence] = useState(0.8);
+
+  return (
+    <div className="mt-5 rounded-lg border border-border/70 bg-background/60 p-3">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">Quick Paper Trade</p>
+      <p className="mt-1 text-sm text-muted-foreground">{symbol} at {fmt(price || 0)}</p>
+
+      <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+        <button
+          onClick={() => setSide("BUY")}
+          className={[
+            "rounded-md border px-2 py-1.5 transition",
+            side === "BUY" ? "border-emerald-500 bg-emerald-500/20 text-emerald-500" : "border-border text-muted-foreground",
+          ].join(" ")}
+        >
+          BUY
+        </button>
+        <button
+          onClick={() => setSide("SELL")}
+          className={[
+            "rounded-md border px-2 py-1.5 transition",
+            side === "SELL" ? "border-rose-500 bg-rose-500/20 text-rose-500" : "border-border text-muted-foreground",
+          ].join(" ")}
+        >
+          SELL
+        </button>
+        <input
+          value={quantity}
+          min={1}
+          onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))}
+          type="number"
+          className="rounded-md border border-border bg-background px-2 py-1.5 text-right text-foreground"
+        />
+      </div>
+
+      <div className="mt-3">
+        <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+          <span>Confidence</span>
+          <span>{Math.round(confidence * 100)}%</span>
+        </div>
+        <input
+          type="range"
+          min={0.5}
+          max={1}
+          step={0.01}
+          value={confidence}
+          onChange={(e) => setConfidence(Number(e.target.value))}
+          className="w-full accent-primary"
+        />
+      </div>
+
+      <button
+        onClick={() => void onSubmit({ side, quantity, confidence })}
+        disabled={loading || price <= 0}
+        className="mt-3 w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {loading ? "Placing..." : `Place ${side} Order`}
+      </button>
+
+      {error ? <p className="mt-2 text-xs text-rose-500">{error}</p> : null}
     </div>
   );
 }
 
 export default function DashboardPage() {
   const [, setLocation] = useLocation();
-  const { user, isAuthenticated, logout } = useAuth();
   const [currentSymbol, setCurrentSymbol] = useState("AAPL");
   const [latestTick, setLatestTick] = useState<LiveTick | null>(null);
   const [priceHistory, setPriceHistory] = useState<number[]>([]);
 
-  const { data: portfolio } = usePortfolioState(isAuthenticated);
+  const { data: portfolio } = usePortfolioState(true);
   const { data: trades = [] } = useTradeHistory(1, {});
-  const { data: agentStatus } = useAgentStatus(isAuthenticated);
+  const { data: agentStatus } = useAgentStatus(true);
+  const createTrade = useCreateTrade();
 
   const symbols = useMemo(() => {
     const source = portfolio?.positions?.map((p) => p.symbol) ?? [];
@@ -295,7 +385,7 @@ export default function DashboardPage() {
 
   const { connected } = useTradingWebSocket({
     onTick,
-    enabled: isAuthenticated,
+    enabled: true,
   });
 
   const currentPosition = portfolio?.positions.find((p) => p.symbol === currentSymbol);
@@ -308,6 +398,17 @@ export default function DashboardPage() {
   const unrealized = portfolio?.unrealized_pnl ?? 0;
   const cashPct = totalValue > 0 ? (cash / totalValue) * 100 : 0;
   const deltaPct = totalValue > 0 ? (unrealized / totalValue) * 100 : 0;
+
+  const onPlaceTrade = async (payload: { side: "BUY" | "SELL"; quantity: number; confidence: number }) => {
+    const orderPrice = currentPrice > 0 ? currentPrice : latestTick?.close ?? 0;
+    await createTrade.mutateAsync({
+      symbol: currentSymbol,
+      side: payload.side,
+      quantity: payload.quantity,
+      confidence: payload.confidence,
+      price: orderPrice,
+    });
+  };
 
   return (
     <Dashboard
@@ -331,8 +432,9 @@ export default function DashboardPage() {
       recentTrades={trades.slice(0, 5)}
       wsConnected={connected}
       onNavigate={setLocation}
-      userEmail={user?.username ?? ""}
-      onSignOut={logout}
+      onPlaceTrade={onPlaceTrade}
+      placingTrade={createTrade.isPending}
+      tradeError={createTrade.error ? (createTrade.error as Error).message : null}
     />
   );
 }

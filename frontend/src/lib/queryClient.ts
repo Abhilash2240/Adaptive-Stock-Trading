@@ -1,4 +1,5 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { getAccessTokenForApi } from "@/hooks/use-api";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -14,9 +15,13 @@ export async function apiRequest(
 ): Promise<Response> {
   const base = import.meta.env.VITE_API_BASE?.replace(/\/$/, "") || "";
   const fullUrl = url.startsWith("http") ? url : `${base}${url}`;
+  const token = await getAccessTokenForApi();
   const res = await fetch(fullUrl, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: {
+      ...(data ? { "Content-Type": "application/json" } : {}),
+      Authorization: `Bearer ${token}`,
+    },
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -34,7 +39,11 @@ export const getQueryFn: <T>(options: {
     const base = import.meta.env.VITE_API_BASE?.replace(/\/$/, "") || "";
     const url = queryKey.join("/") as string;
     const fullUrl = url.startsWith("http") ? url : `${base}${url}`;
+    const token = await getAccessTokenForApi();
     const res = await fetch(fullUrl, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
       credentials: "include",
     });
 

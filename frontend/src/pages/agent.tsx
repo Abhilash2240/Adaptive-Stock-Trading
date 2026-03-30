@@ -3,14 +3,12 @@ import { useLocation } from "wouter";
 import { Activity, Bot, Play, Zap } from "lucide-react";
 
 import { Sidebar } from "@/components/Sidebar";
-import { useAuth } from "@/contexts/auth-context";
 import { useAgentStatus, useTrainStep } from "@/hooks/use-api";
 
 export default function AgentPage() {
   const [location, setLocation] = useLocation();
-  const { user, logout, isAuthenticated } = useAuth();
 
-  const { data: status, isLoading, refetch } = useAgentStatus(isAuthenticated);
+  const { data: status, isLoading, refetch } = useAgentStatus(true);
   const train = useTrainStep();
   const [manualCount, setManualCount] = useState(1);
 
@@ -28,8 +26,6 @@ export default function AgentPage() {
       <Sidebar
         activeRoute={location}
         onNavigate={setLocation}
-        userEmail={user?.username ?? ""}
-        onSignOut={logout}
       />
 
       <main className="ml-60 p-6 space-y-6">

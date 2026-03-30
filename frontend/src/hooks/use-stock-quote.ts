@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getAccessTokenForApi } from "@/hooks/use-api";
 
 export interface StockQuote {
   symbol: string;
@@ -16,6 +17,7 @@ export interface StockQuote {
 }
 
 export function useStockQuote(symbol: string, pollMs = 5000) {
+  const base = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
   const [quote, setQuote] = useState<StockQuote>({ symbol, price: null });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,12 +30,12 @@ export function useStockQuote(symbol: string, pollMs = 5000) {
       setLoading(true);
       setError(null);
       try {
-        const token = localStorage.getItem("auth_token");
-        const headers: Record<string, string> = token
-          ? { Authorization: `Bearer ${token}` }
-          : {};
+        const token = await getAccessTokenForApi();
+        const headers: Record<string, string> = {
+          Authorization: `Bearer ${token}`,
+        };
         const res = await fetch(
-          `/api/quote?symbol=${encodeURIComponent(symbol)}`,
+          `${base}/api/v1/quotes?symbol=${encodeURIComponent(symbol)}`,
           { headers }
         );
         if (!res.ok) throw new Error(await res.text());

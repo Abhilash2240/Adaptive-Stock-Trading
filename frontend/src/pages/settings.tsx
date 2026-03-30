@@ -1,23 +1,20 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { Bell, Database, LogOut, Moon, Settings, Sun, User } from "lucide-react";
+import { Bell, Database, Moon, Settings, Sun } from "lucide-react";
 
 import { Sidebar } from "@/components/Sidebar";
-import { useAuth } from "@/contexts/auth-context";
 import { useTheme } from "@/components/theme-provider";
 import { SaveSettingsPayload, useBackendReady, useSaveSettings, useSettings } from "@/hooks/use-api";
 
 export default function SettingsPage() {
   const [location, setLocation] = useLocation();
-  const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const { data: backendReady } = useBackendReady();
   const providerName = backendReady?.summary?.provider ?? "--";
-  const userId = user?.id ?? "";
+  const userId = "default";
   const { data: userSettings } = useSettings(userId);
   const saveSettings = useSaveSettings();
 
-  const [confirmingLogout, setConfirmingLogout] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(
     userSettings?.notificationsEnabled ?? true,
   );
@@ -32,16 +29,7 @@ export default function SettingsPage() {
   }, [userSettings]);
 
   const persist = async (partial: Partial<SaveSettingsPayload>) => {
-    if (!userId) return;
     await saveSettings.mutateAsync({ userId, ...partial });
-  };
-
-  const handleLogout = () => {
-    if (!confirmingLogout) {
-      setConfirmingLogout(true);
-      return;
-    }
-    logout();
   };
 
   return (
@@ -49,8 +37,6 @@ export default function SettingsPage() {
       <Sidebar
         activeRoute={location}
         onNavigate={setLocation}
-        userEmail={user?.username ?? ""}
-        onSignOut={logout}
       />
 
       <main className="ml-60 p-6 space-y-6">

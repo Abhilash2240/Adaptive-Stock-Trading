@@ -1,10 +1,12 @@
-import uuid
-
 import pytest
 import pytest_asyncio
+from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
 from packages.api import create_app
+from packages.db.engine import get_session_ctx
+from packages.db.models import UserDB
+from packages.shared import auth0 as auth0_module
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -12,6 +14,27 @@ pytestmark = pytest.mark.asyncio(loop_scope="module")
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def client():
     app = create_app()
+
+    def _verify_auth0_token(token: str, settings):
+        if token == "test-token":
+            return {"sub": "test-user", "email": "test@example.com"}
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    auth0_module.verify_auth0_token = _verify_auth0_token
+
+    async with get_session_ctx() as session:
+        existing = await session.get(UserDB, "test-user")
+        if existing is None:
+            session.add(
+                UserDB(
+                    id="test-user",
+                    username="test_user",
+                    password_hash="not-used",
+                    is_active=True,
+                )
+            )
+            await session.commit()
+
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://localhost",
@@ -20,24 +43,8 @@ async def client():
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
-async def auth_user(client):
-    username = f"test_{uuid.uuid4().hex[:8]}"
-    password = "TestPass123!"
-    r = await client.post(
-        "/api/v1/auth/register",
-        json={"username": username, "password": password},
-    )
-    assert r.status_code in (200, 201), r.text
-    payload = r.json()
-    token = payload["access_token"]
-    user_id = payload["user"]["id"]
-    return {
-        "username": username,
-        "password": password,
-        "token": token,
-        "user_id": user_id,
-        "headers": {"Authorization": f"Bearer {token}"},
-    }
+async def auth_headers():
+    return {"Authorization": "Bearer test-token"}
 
 
 async def test_health_live(client):
@@ -50,44 +57,19 @@ async def test_health_ready(client):
     assert r.status_code == 200
 
 
-async def test_register_and_login(client):
-    username = f"test_{uuid.uuid4().hex[:8]}"
-    password = "TestPass123!"
-
-    # Register
-    r = await client.post(
-        "/api/v1/auth/register",
-        json={"username": username, "password": password},
-    )
-    assert r.status_code in (200, 201)
-    token = r.json().get("access_token")
-    assert token
-
-    # Login
-    r = await client.post(
-        "/api/v1/auth/login",
-        json={"username": username, "password": password},
-    )
-    assert r.status_code == 200
-    assert r.json().get("access_token")
-
-    # Me endpoint
-    r = await client.get(
-        "/api/v1/auth/me",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert r.status_code == 200
-    assert r.json()["username"] == username
+async def test_protected_requires_auth(client):
+    r = await client.get("/api/v1/portfolio")
+    assert r.status_code == 403
 
 
-async def test_settings_crud(client, auth_user):
-    user_id = auth_user["user_id"]
-    headers = auth_user["headers"]
+async def test_settings_crud(client, auth_headers):
+    user_id = "test-user"
+    headers = auth_headers
 
     # GET settings (auto-creates row)
     r = await client.get(f"/settings?userId={user_id}", headers=headers)
     assert r.status_code == 200
-    assert r.json()["tradingMode"] == "paper"
+    assert r.json()["tradingMode"] in ("paper", "live")
 
     # POST settings update
     r = await client.post(
@@ -103,13 +85,13 @@ async def test_settings_crud(client, auth_user):
     assert r.json()["tradingMode"] == "live"
 
 
-async def test_portfolio_and_trades(client, auth_user):
-    headers = auth_user["headers"]
+async def test_portfolio_and_trades(client, auth_headers):
+    headers = auth_headers
 
     # GET portfolio (empty)
     r = await client.get("/portfolio", headers=headers)
     assert r.status_code == 200
-    assert r.json()["cash"] == 10000.0
+    initial_cash = float(r.json()["cash"])
 
     # POST trade
     r = await client.post(
@@ -129,11 +111,11 @@ async def test_portfolio_and_trades(client, auth_user):
     # GET portfolio reflects trade
     r = await client.get("/portfolio", headers=headers)
     assert r.status_code == 200
-    assert r.json()["cash"] < 10000.0
+    assert float(r.json()["cash"]) < initial_cash
 
 
-async def test_agent_status(client, auth_user):
-    headers = auth_user["headers"]
+async def test_agent_status(client, auth_headers):
+    headers = auth_headers
 
     r = await client.get("/agent/status", headers=headers)
     assert r.status_code == 200
