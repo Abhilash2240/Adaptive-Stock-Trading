@@ -1,18 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
-import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
 export default defineConfig(async ({ command }) => {
-  const plugins = [react(), runtimeErrorOverlay()];
-
-  if (process.env.NODE_ENV !== "production" && process.env.REPL_ID !== undefined) {
-    const [{ cartographer }, { devBanner }] = await Promise.all([
-      import("@replit/vite-plugin-cartographer"),
-      import("@replit/vite-plugin-dev-banner"),
-    ]);
-    plugins.push(cartographer(), devBanner());
-  }
+  const plugins = [react()];
 
   if (process.env.ANALYZE === "true") {
     const { visualizer } = await import("rollup-plugin-visualizer");
