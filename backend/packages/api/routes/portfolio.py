@@ -90,7 +90,6 @@ def _build_positions(
     return positions, total_pnl
 
 
-@router.get("/portfolio", response_model=PortfolioStateResponse)
 @router.get("/api/v1/portfolio", response_model=PortfolioStateResponse)
 async def get_portfolio(
     session: AsyncSession = Depends(get_session),
@@ -125,7 +124,6 @@ async def get_portfolio(
     )
 
 
-@router.get("/trades", response_model=list[TradeRecord])
 @router.get("/api/v1/trades", response_model=list[TradeRecord])
 async def get_trades(
     limit: int = 50,
@@ -156,7 +154,6 @@ async def get_trades(
     ]
 
 
-@router.post("/trades", response_model=TradeRecord)
 @router.post("/api/v1/trades", response_model=TradeRecord)
 async def log_trade(
     payload: LogTradePayload,

@@ -67,13 +67,13 @@ async def test_settings_crud(client, auth_headers):
     headers = auth_headers
 
     # GET settings (auto-creates row)
-    r = await client.get(f"/settings?userId={user_id}", headers=headers)
+    r = await client.get(f"/api/v1/settings?userId={user_id}", headers=headers)
     assert r.status_code == 200
     assert r.json()["tradingMode"] in ("paper", "live")
 
     # POST settings update
     r = await client.post(
-        "/settings",
+        "/api/v1/settings",
         headers=headers,
         json={
             "userId": user_id,
@@ -89,13 +89,13 @@ async def test_portfolio_and_trades(client, auth_headers):
     headers = auth_headers
 
     # GET portfolio (empty)
-    r = await client.get("/portfolio", headers=headers)
+    r = await client.get("/api/v1/portfolio", headers=headers)
     assert r.status_code == 200
     initial_cash = float(r.json()["cash"])
 
     # POST trade
     r = await client.post(
-        "/trades",
+        "/api/v1/trades",
         headers=headers,
         json={
             "symbol": "AAPL",
@@ -109,7 +109,7 @@ async def test_portfolio_and_trades(client, auth_headers):
     assert r.json()["symbol"] == "AAPL"
 
     # GET portfolio reflects trade
-    r = await client.get("/portfolio", headers=headers)
+    r = await client.get("/api/v1/portfolio", headers=headers)
     assert r.status_code == 200
     assert float(r.json()["cash"]) < initial_cash
 
@@ -117,7 +117,7 @@ async def test_portfolio_and_trades(client, auth_headers):
 async def test_agent_status(client, auth_headers):
     headers = auth_headers
 
-    r = await client.get("/agent/status", headers=headers)
+    r = await client.get("/api/v1/agent", headers=headers)
     assert r.status_code == 200
     data = r.json()
     assert "epsilon" in data

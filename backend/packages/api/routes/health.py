@@ -9,13 +9,11 @@ router = APIRouter(prefix="/health", tags=["health"])
 
 
 @router.get("/live")
-@router.get("/v1/health/live")
 async def live() -> dict[str, str]:
     return {"status": "ok"}
 
 
 @router.get("/ready")
-@router.get("/v1/health/ready")
 async def ready(
     settings: Settings = Depends(get_settings),
     provider: DataProvider = Depends(get_data_provider),
@@ -28,7 +26,6 @@ async def ready(
 
 
 @router.get("/agent", response_model=AgentStatus)
-@router.get("/v1/health/agent", response_model=AgentStatus)
 async def agent_status(request: Request) -> AgentStatus:
     agent: AgentService = request.app.state.agent_service
     return await agent.status()

@@ -146,7 +146,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": "running",
             "docs": "/docs",
             "health": "/api/v1/health",
-            "auth": "/api/v1/auth",
             "features": [
                 "Auth0 JWT Authentication",
                 "Real-time Stock Data Streaming",
@@ -158,7 +157,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
 
     # API status endpoint
-    @app.get("/api/status")
     @app.get("/api/v1/status")
     async def api_status():
         """Get API status and configuration."""
@@ -174,10 +172,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "endpoints": {
                 "docs": "/docs",
                 "health": "/api/v1/health",
-                "auth": "/api/v1/auth",
-                "stream": "/stream",
+                "stream": "/api/v1/stream",
                 "websocket": "/ws/quotes",
-                "agent_status": "/agent/status"
+                "agent_status": "/api/v1/agent"
             }
         }
 
@@ -198,7 +195,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
 
     # ── Stock quote REST endpoint (powered by Twelve Data) ────────
-    @app.get("/api/quote")
     @app.get("/api/v1/quotes")
     @limiter.limit("30/minute")
     async def get_quote(
@@ -234,31 +230,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(status_code=502, detail=f"Twelve Data error: {exc}")
         return {"symbol": sym, "price": 0, "provider": provider.name, "currency": "USD"}
 
-    @app.get("/api/stocks")
-    @limiter.limit("10/minute")
-    async def list_stocks(
-        request: Request,
-        symbol: str | None = None,
-        exchange: str | None = None,
-        country: str | None = None,
-        type: str | None = None,
-        provider: DataProvider = Depends(get_data_provider),
-    ) -> dict:
-        """
-        Proxy to Twelve Data /stocks endpoint — returns available symbols.
-        """
-        from packages.data.adapters.twelvedata import TwelveDataProvider
-        if not isinstance(provider, TwelveDataProvider):
-            return {"data": [], "status": "ok", "provider": provider.name,
-                    "message": "Stock listing only available with Twelve Data provider"}
-        try:
-            return await provider.fetch_stocks_list(
-                symbol=symbol, exchange=exchange, country=country, stock_type=type
-            )
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"Twelve Data error: {exc}")
-
-    @app.post("/stream")
     @app.post("/api/v1/stream")
     @limiter.limit("10/minute")  # Rate limit stream requests
     async def request_stream(
@@ -282,7 +253,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await provider.subscribe(stream_request.symbol, stream_request.channel)
         return {"status": "subscribed"}
 
-    @app.get("/settings", response_model=UserSettingsResponse)
     @app.get("/api/v1/settings", response_model=UserSettingsResponse)
     async def get_settings_route(
         userId: str = Query(...),
@@ -298,7 +268,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 row = await repo.upsert(userId)
             return UserSettingsResponse.from_db(row)
 
-    @app.post("/settings", response_model=UserSettingsResponse)
     @app.post("/api/v1/settings", response_model=UserSettingsResponse)
     async def save_settings_route(
         payload: SaveSettingsPayload,
@@ -398,7 +367,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         else:
             websocket_closed(endpoint, code="complete")
 
-    @app.get("/agent/status", response_model=AgentStatus)
     @app.get("/api/v1/agent", response_model=AgentStatus)
     @limiter.limit("30/minute")  # Rate limit agent status requests
     async def agent_status(
@@ -413,7 +381,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return await agent.status()
 
-    @app.post("/agent/action", response_model=AgentAction)
     @app.post("/api/v1/agent/action", response_model=AgentAction)
     async def get_agent_action(
         symbol: str,
@@ -423,7 +390,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> AgentAction:
         return agent.get_action(symbol=symbol, portfolio=portfolio)
 
-    @app.post("/rl/train", response_model=dict)
     @app.post("/api/v1/rl/train", response_model=dict)
     async def trigger_training(
         current_user: AuthenticatedUser = Depends(get_current_user),
