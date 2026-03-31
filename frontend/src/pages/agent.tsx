@@ -28,7 +28,7 @@ export default function AgentPage() {
         onNavigate={setLocation}
       />
 
-      <main className="ml-72 space-y-5 p-5">
+      <main className="ml-0 space-y-5 p-4 md:ml-72 md:p-5">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-[#7f98bb]">Automation Desk</p>

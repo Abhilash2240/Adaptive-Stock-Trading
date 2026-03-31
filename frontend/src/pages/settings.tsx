@@ -44,39 +44,38 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-[#f1f5f9]">
+    <div className="min-h-screen bg-[#081221] text-[#f1f6ff]">
       <Sidebar
         activeRoute={location}
         onNavigate={setLocation}
       />
 
-      <main className="ml-72 p-6 space-y-6">
+      <main className="ml-0 space-y-5 p-4 md:ml-72 md:p-5">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Settings size={22} /> Settings</h1>
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-[#7f98bb]">System Console</p>
+            <h1 className="flex items-center gap-2 text-3xl font-semibold"><Settings size={22} /> Settings</h1>
+          </div>
           <span className="text-sm text-[#94a3b8]">Provider: {userSettings?.marketDataProvider ?? providerName}</span>
         </div>
 
-        <section className="bg-[#12121a] border border-[#1e1e2e] rounded-xl p-5 space-y-4">
-          <h2 className="font-semibold flex items-center gap-2"><User size={16} /> Account</h2>
-          <Row label="User" value="Guest Trader" />
-          <Row label="Status" value="Active" />
-          <Row
-            label="Created"
-            value={new Date().toLocaleDateString()}
-          />
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <Metric title="User" value="Guest Trader" icon={<User size={14} />} />
+          <Metric title="Provider" value={userSettings?.marketDataProvider ?? providerName} icon={<Database size={14} />} />
+          <Metric title="Mode" value={(userSettings?.tradingMode ?? "paper").toUpperCase()} icon={<Bell size={14} />} />
         </section>
 
-        <section className="bg-[#12121a] border border-[#1e1e2e] rounded-xl p-5 space-y-4">
-          <h2 className="font-semibold flex items-center gap-2"><Sun size={16} /> Appearance</h2>
-          <div className="flex gap-3">
+        <section className="space-y-4 rounded-xl border border-[#233b5f] bg-[#0f1d34] p-5">
+          <h2 className="flex items-center gap-2 font-semibold text-[#e7f2ff]"><Sun size={16} /> Appearance</h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <ThemeButton current={theme} value="light" onClick={() => setTheme("light")} icon={<Sun size={14} />} />
             <ThemeButton current={theme} value="dark" onClick={() => setTheme("dark")} icon={<Moon size={14} />} />
             <ThemeButton current={theme} value="system" onClick={() => setTheme("system")} icon={<Settings size={14} />} />
           </div>
         </section>
 
-        <section className="bg-[#12121a] border border-[#1e1e2e] rounded-xl p-5 space-y-4">
-          <h2 className="font-semibold flex items-center gap-2"><Database size={16} /> Trading Preferences</h2>
+        <section className="space-y-4 rounded-xl border border-[#233b5f] bg-[#0f1d34] p-5">
+          <h2 className="flex items-center gap-2 font-semibold text-[#e7f2ff]"><Database size={16} /> Trading Preferences</h2>
           <ToggleRow
             label="Notifications"
             description="Enable execution and system alerts"
@@ -100,18 +99,18 @@ export default function SettingsPage() {
           <Row label="Trading Mode" value={(userSettings?.tradingMode ?? "paper").toUpperCase()} />
         </section>
 
-        <section className="bg-[#12121a] border border-[#1e1e2e] rounded-xl p-5 space-y-4">
-          <h2 className="font-semibold flex items-center gap-2"><Bell size={16} /> Session</h2>
+        <section className="space-y-4 rounded-xl border border-[#233b5f] bg-[#0f1d34] p-5">
+          <h2 className="flex items-center gap-2 font-semibold text-[#e7f2ff]"><Bell size={16} /> Session</h2>
           {confirmingReset ? (
             <div className="space-y-3">
               <p className="text-sm text-[#94a3b8]">Reset this local trading session to defaults?</p>
               <div className="flex gap-3">
-                <button onClick={() => void resetSession()} className="rounded-md px-4 py-2 bg-[#ef4444] text-white">Confirm Reset</button>
-                <button onClick={() => setConfirmingReset(false)} className="rounded-md px-4 py-2 bg-[#1e1e2e]">Cancel</button>
+                <button onClick={() => void resetSession()} className="rounded-md bg-[#ef4444] px-4 py-2 text-white">Confirm Reset</button>
+                <button onClick={() => setConfirmingReset(false)} className="rounded-md border border-[#35527d] bg-[#152848] px-4 py-2 text-[#d6e6ff]">Cancel</button>
               </div>
             </div>
           ) : (
-            <button onClick={() => setConfirmingReset(true)} className="inline-flex items-center gap-2 rounded-md px-4 py-2 bg-[#ef4444] text-white">
+            <button onClick={() => setConfirmingReset(true)} className="inline-flex items-center gap-2 rounded-md bg-[#ef4444] px-4 py-2 text-white">
               <RotateCcw size={14} />
               Reset Session
             </button>
@@ -124,7 +123,7 @@ export default function SettingsPage() {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between text-sm border-b border-[#1e1e2e] pb-2">
+    <div className="flex items-center justify-between border-b border-[#29466f] pb-2 text-sm">
       <span className="text-[#94a3b8]">{label}</span>
       <span>{value}</span>
     </div>
@@ -147,8 +146,8 @@ function ThemeButton({
     <button
       onClick={onClick}
       className={[
-        "inline-flex items-center gap-2 px-3 py-2 rounded-md border",
-        active ? "bg-[#6366f1] border-[#6366f1]" : "bg-[#0d0d14] border-[#1e1e2e]",
+        "inline-flex items-center justify-center gap-2 rounded-md border px-3 py-2",
+        active ? "border-[#2d8bff] bg-[#2d8bff] text-white" : "border-[#35527d] bg-[#0d1c33] text-[#d5e7ff]",
       ].join(" ")}
     >
       {icon}
@@ -169,7 +168,7 @@ function ToggleRow({
   onToggle: () => Promise<void>;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-[#1e1e2e] pb-3">
+    <div className="flex items-center justify-between gap-4 border-b border-[#29466f] pb-3">
       <div>
         <p className="text-sm">{label}</p>
         <p className="text-xs text-[#94a3b8]">{description}</p>
@@ -188,6 +187,15 @@ function ToggleRow({
           ].join(" ")}
         />
       </button>
+    </div>
+  );
+}
+
+function Metric({ title, value, icon }: { title: string; value: string; icon: ReactNode }) {
+  return (
+    <div className="rounded-xl border border-[#233b5f] bg-[#0f1d34] p-4">
+      <p className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-[#8aa4c7]">{icon}{title}</p>
+      <p className="mt-2 text-xl font-semibold text-[#edf4ff]">{value}</p>
     </div>
   );
 }

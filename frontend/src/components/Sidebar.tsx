@@ -33,7 +33,7 @@ const marketList = [
 
 export function Sidebar({ activeRoute, onNavigate, userEmail: _userEmail, onSignOut: _onSignOut }: SidebarProps) {
   return (
-    <aside className="fixed left-0 top-0 flex h-screen w-72 flex-col border-r border-[#1d2c44] bg-gradient-to-b from-[#0e1b31] to-[#0a1323] text-[#e2ecff]">
+    <aside className="fixed left-0 top-0 hidden h-screen w-72 flex-col border-r border-[#1d2c44] bg-gradient-to-b from-[#0e1b31] to-[#0a1323] text-[#e2ecff] md:flex">
       <div className="border-b border-[#1d2c44] px-5 py-4">
         <button onClick={() => onNavigate("/dashboard")} className="flex w-full items-center justify-between rounded-lg bg-[#132747] px-3 py-2 text-left">
           <div>

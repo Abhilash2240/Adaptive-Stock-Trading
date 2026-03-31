@@ -75,7 +75,7 @@ export function Dashboard(props: DashboardProps) {
         onNavigate={props.onNavigate}
       />
 
-      <main className="relative ml-72 space-y-5 p-5">
+      <main className="relative ml-0 space-y-5 p-4 md:ml-72 md:p-5">
         <section className="flex flex-wrap items-center gap-3 rounded-xl border border-[#1f3352] bg-[#101e36] px-4 py-3">
           <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7f98bb]">Popular</span>
           {[
