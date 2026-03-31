@@ -13,37 +13,13 @@ function resolveUrl(path: string): string {
 	return `${API_BASE}${path}`;
 }
 
-let tokenGetter: (() => Promise<string>) | null = null;
-
-export function setTokenGetter(fn: (() => Promise<string>) | null): void {
-	tokenGetter = fn;
-}
-
-export async function getAccessTokenForApi(): Promise<string> {
-	if (!tokenGetter) {
-		throw new Error("Auth0 token getter is not configured");
-	}
-	const token = await tokenGetter();
-	if (!token) {
-		throw new Error("Missing Auth0 access token");
-	}
-	return token;
-}
-
-async function getAuthHeaders(): Promise<Record<string, string>> {
-	const token = await getAccessTokenForApi();
-	return { Authorization: `Bearer ${token}` };
-}
-
 async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
-	const authHeaders = await getAuthHeaders();
 	const response = await fetch(resolveUrl(path), {
 		credentials: "include",
 		...init,
 		headers: {
 			Accept: "application/json",
 			"Content-Type": "application/json",
-			...authHeaders,
 			...(init.headers ?? {}),
 		},
 	});
@@ -148,6 +124,24 @@ export interface StreamSubscribePayload {
 	channel?: "quotes" | "trades";
 }
 
+export interface LiveQuoteResponse {
+	symbol: string;
+	name: string;
+	price: number;
+	open: number;
+	high: number;
+	low: number;
+	volume: number;
+	change: number;
+	percent_change: number;
+	currency: string;
+	exchange: string;
+	is_market_open: boolean;
+	market_status: "open" | "closed" | "unknown";
+	last_quote_time: string;
+	provider: string;
+}
+
 export interface UserSettingsResponse {
 	userId: string;
 	tradingMode: "paper" | "live";
@@ -158,6 +152,18 @@ export interface UserSettingsResponse {
 
 export interface SaveSettingsPayload extends Partial<UserSettingsResponse> {
 	userId: string;
+}
+
+export interface ChatRequestPayload {
+	userId: string;
+	message: string;
+	symbol?: string;
+}
+
+export interface ChatResponsePayload {
+	answer: string;
+	model: string;
+	timestamp: string;
 }
 
 export const apiBaseUrl = API_BASE;
@@ -214,6 +220,17 @@ export function useSubscribeToStream() {
 				body: JSON.stringify({ symbol, channel }),
 			});
 		},
+	});
+}
+
+export function useLiveQuote(symbol: string, enabled = true) {
+	return useQuery<LiveQuoteResponse>({
+		queryKey: ["live-quote", symbol],
+		enabled: enabled && Boolean(symbol),
+		queryFn: () => requestJson<LiveQuoteResponse>(`/api/v1/quotes?symbol=${encodeURIComponent(symbol)}`),
+		staleTime: 15_000,
+		refetchInterval: enabled ? 30_000 : false,
+		retry: 1,
 	});
 }
 
@@ -297,6 +314,16 @@ export function useCreateTrade() {
 			queryClient.invalidateQueries({ queryKey: ["trade-history"] });
 			queryClient.invalidateQueries({ queryKey: ["portfolio-state"] });
 		},
+	});
+}
+
+export function useGeminiChat() {
+	return useMutation({
+		mutationFn: (payload: ChatRequestPayload) =>
+			requestJson<ChatResponsePayload>("/api/v1/chat", {
+				method: "POST",
+				body: JSON.stringify(payload),
+			}),
 	});
 }
 

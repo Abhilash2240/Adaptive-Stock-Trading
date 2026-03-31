@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     port: int = 8001
     database_url: str = ""
     twelvedata_api_key: str = ""
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-1.5-flash"
     data_provider: str = ""
     symbols: str = "AAPL,MSFT,TSLA"
     mock_stream_interval: float = 1.0
@@ -48,8 +50,6 @@ class Settings(BaseSettings):
     audit_log_enabled: bool = True
     ssl_required: bool = False
     trust_proxy: bool = False
-    auth0_domain: str = ""
-    auth0_audience: str = ""
 
     @model_validator(mode="after")
     def apply_provider_defaults(self) -> "Settings":

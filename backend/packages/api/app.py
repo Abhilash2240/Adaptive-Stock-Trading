@@ -1,10 +1,12 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 import logging
 import os
 
 from fastapi import Body, Depends, FastAPI, Query, Request, Response, WebSocket
 from fastapi import WebSocketDisconnect, HTTPException, status
+import httpx
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -17,15 +19,19 @@ from starlette.requests import Request as StarletteRequest
 from typing import Annotated
 
 from packages.agent.service import AgentService
+from packages.ai.gemini_client import GeminiChatService
 from packages.data.provider import DataProvider, get_data_provider
 from packages.db.engine import get_session_ctx
+from packages.db.models import UserDB
+from packages.db.repositories import UserRepository
 from packages.db.repositories import UserSettingsRepository
 from packages.shared.config import Settings, get_settings
-from packages.shared.auth0 import AuthenticatedUser, get_current_user, verify_auth0_token
 from packages.shared.metrics import websocket_closed, websocket_connected, websocket_message_sent
 from packages.shared.schemas import (
     AgentAction,
     AgentStatus,
+    ChatRequest,
+    ChatResponse,
     SaveSettingsPayload,
     StreamRequest,
     UserSettingsResponse,
@@ -42,6 +48,7 @@ from .routes.portfolio import router as portfolio_router
 security_scheme = HTTPBearer()
 validator = InputValidator()
 logger = logging.getLogger(__name__)
+DEFAULT_USER_ID = "anonymous-user"
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -147,7 +154,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "docs": "/docs",
             "health": "/api/v1/health",
             "features": [
-                "Auth0 JWT Authentication",
+                "No-login trading mode",
                 "Real-time Stock Data Streaming",
                 "AI Trading Agent",
                 "Rate Limiting",
@@ -164,7 +171,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": "operational",
             "environment": resolved_settings.environment,
             "security": {
-                "authentication": "Auth0 JWT",
+                "authentication": "none",
                 "rate_limiting": "enabled",
                 "cors": "configured",
                 "security_headers": "enabled"
@@ -212,10 +219,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if isinstance(provider, TwelveDataProvider):
             try:
                 data = await provider.fetch_quote_detail(sym)
+                raw_market_open = data.get("is_market_open")
+                is_market_open = str(raw_market_open).lower() == "true"
+                if raw_market_open is None:
+                    market_status = "unknown"
+                else:
+                    market_status = "open" if is_market_open else "closed"
+
+                raw_price = data.get("close", data.get("price", 0))
                 return {
                     "symbol": data.get("symbol", sym),
                     "name": data.get("name", sym),
-                    "price": float(data.get("close", 0)),
+                    "price": float(raw_price or 0),
                     "open": float(data.get("open", 0)),
                     "high": float(data.get("high", 0)),
                     "low": float(data.get("low", 0)),
@@ -224,11 +239,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "percent_change": float(data.get("percent_change", 0)),
                     "currency": data.get("currency", "USD"),
                     "exchange": data.get("exchange", ""),
+                    "is_market_open": is_market_open,
+                    "market_status": market_status,
+                    "last_quote_time": data.get("datetime", ""),
                     "provider": "twelvedata",
                 }
             except Exception as exc:
                 raise HTTPException(status_code=502, detail=f"Twelve Data error: {exc}")
-        return {"symbol": sym, "price": 0, "provider": provider.name, "currency": "USD"}
+        return {
+            "symbol": sym,
+            "price": 0,
+            "provider": provider.name,
+            "currency": "USD",
+            "is_market_open": False,
+            "market_status": "unknown",
+            "last_quote_time": "",
+        }
+
+    async def ensure_default_user_exists() -> None:
+        async with get_session_ctx() as session:
+            users = UserRepository(session)
+            existing = await users.get_by_id(DEFAULT_USER_ID)
+            if existing is None:
+                session.add(
+                    UserDB(
+                        id=DEFAULT_USER_ID,
+                        username="anonymous",
+                        password_hash="not-used",
+                        is_active=True,
+                    )
+                )
+                await session.commit()
 
     @app.post("/api/v1/stream")
     @limiter.limit("10/minute")  # Rate limit stream requests
@@ -236,7 +277,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         stream_request: StreamRequest,
         provider: DataProvider = Depends(get_data_provider),
-        current_user: AuthenticatedUser = Depends(get_current_user),
     ) -> dict[str, str]:
         # Validate and sanitize input
         validated_data = validator.validate_stream_request({
@@ -245,7 +285,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         })
         
         await audit_logger.log_user_action(
-            user_id=current_user.id,
+            user_id=DEFAULT_USER_ID,
             action="stream_request", 
             details={"symbol": validated_data["symbol"], "channel": validated_data["channel"]}
         )
@@ -255,26 +295,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/v1/settings", response_model=UserSettingsResponse)
     async def get_settings_route(
-        userId: str = Query(...),
-        current_user: AuthenticatedUser = Depends(get_current_user),
+        userId: str = Query(DEFAULT_USER_ID),
     ) -> UserSettingsResponse:
-        if current_user.id != userId:
-            raise HTTPException(status_code=403, detail="Forbidden")
+        await ensure_default_user_exists()
+        resolved_user_id = userId or DEFAULT_USER_ID
 
         async with get_session_ctx() as session:
             repo = UserSettingsRepository(session)
-            row = await repo.get(userId)
+            row = await repo.get(resolved_user_id)
             if row is None:
-                row = await repo.upsert(userId)
+                row = await repo.upsert(resolved_user_id)
             return UserSettingsResponse.from_db(row)
 
     @app.post("/api/v1/settings", response_model=UserSettingsResponse)
     async def save_settings_route(
         payload: SaveSettingsPayload,
-        current_user: AuthenticatedUser = Depends(get_current_user),
     ) -> UserSettingsResponse:
-        if current_user.id != payload.userId:
-            raise HTTPException(status_code=403, detail="Forbidden")
+        await ensure_default_user_exists()
+        resolved_user_id = payload.userId or DEFAULT_USER_ID
 
         updates: dict = {}
         if payload.tradingMode is not None:
@@ -288,8 +326,56 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         async with get_session_ctx() as session:
             repo = UserSettingsRepository(session)
-            row = await repo.upsert(payload.userId, **updates)
+            row = await repo.upsert(resolved_user_id, **updates)
             return UserSettingsResponse.from_db(row)
+
+    @app.post("/api/v1/chat", response_model=ChatResponse)
+    @limiter.limit("20/minute")
+    async def chat_with_ai(
+        request: Request,
+        payload: ChatRequest,
+    ) -> ChatResponse:
+        await ensure_default_user_exists()
+        resolved_user_id = payload.userId or DEFAULT_USER_ID
+
+        async with get_session_ctx() as session:
+            settings_repo = UserSettingsRepository(session)
+            row = await settings_repo.get(resolved_user_id)
+            if row is None:
+                row = await settings_repo.upsert(resolved_user_id)
+            if not row.gemini_enabled:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Gemini assistant is disabled. Enable Gemini Assistance in Settings.",
+                )
+
+        gemini = get_gemini_service()
+        if not gemini.is_configured:
+            raise HTTPException(
+                status_code=500,
+                detail="Gemini API key is not configured on the server.",
+            )
+
+        await audit_logger.log_user_action(
+            user_id=resolved_user_id,
+            action="chat_request",
+            details={"symbol": payload.symbol or "", "message_length": len(payload.message)},
+        )
+
+        try:
+            answer = await gemini.generate_reply(payload.message, payload.symbol)
+        except httpx.HTTPStatusError as exc:
+            logger.warning("Gemini API error: %s", exc)
+            raise HTTPException(status_code=502, detail="Gemini API call failed")
+        except Exception as exc:
+            logger.exception("Chat generation failed")
+            raise HTTPException(status_code=500, detail=f"Chat generation failed: {exc}")
+
+        return ChatResponse(
+            answer=answer,
+            model=gemini.model,
+            timestamp=datetime.now(timezone.utc),
+        )
 
     @app.websocket("/ws/quotes")
     async def quotes_websocket(
@@ -297,32 +383,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         provider: DataProvider = Depends(get_data_provider),
     ) -> None:
         endpoint = "/ws/quotes"
-        
-        # WebSocket authentication - check for token in query params
-        token = websocket.query_params.get("token")
-        if not token:
-            await websocket.accept()
-            await websocket.close(code=4001, reason="Authentication required")
-            return
-
-        try:
-            payload = verify_auth0_token(token, resolved_settings)
-            user_id = str(payload.get("sub") or "")
-
-            if not user_id:
-                await websocket.accept()
-                await websocket.close(code=4001, reason="Invalid authentication")
-                return
-                
-            await audit_logger.log_user_action(
-                user_id=str(user_id),
-                action="websocket_connect",
-                details={"endpoint": endpoint}
-            )
-        except Exception as e:
-            await websocket.accept()
-            await websocket.close(code=4001, reason="Authentication failed")
-            return
+        await audit_logger.log_user_action(
+            user_id=DEFAULT_USER_ID,
+            action="websocket_connect",
+            details={"endpoint": endpoint}
+        )
             
         await websocket.accept()
         websocket_connected(endpoint)
@@ -372,10 +437,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def agent_status(
         request: Request,
         agent: AgentService = Depends(get_agent_service),
-        current_user: AuthenticatedUser = Depends(get_current_user),
     ) -> AgentStatus:
         await audit_logger.log_user_action(
-            user_id=current_user.id,
+            user_id=DEFAULT_USER_ID,
             action="agent_status_check",
             details={}
         )
@@ -385,14 +449,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def get_agent_action(
         symbol: str,
         portfolio: dict = Body(...),
-        current_user: AuthenticatedUser = Depends(get_current_user),
         agent: AgentService = Depends(get_agent_service),
     ) -> AgentAction:
         return agent.get_action(symbol=symbol, portfolio=portfolio)
 
     @app.post("/api/v1/rl/train", response_model=dict)
     async def trigger_training(
-        current_user: AuthenticatedUser = Depends(get_current_user),
         agent: AgentService = Depends(get_agent_service),
     ) -> dict:
         loss = agent._agent.train_step()
@@ -406,6 +468,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 
 _agent_service: AgentService | None = None
+_gemini_service: GeminiChatService | None = None
 
 
 def get_agent_service() -> AgentService:
@@ -420,3 +483,14 @@ def get_agent_service() -> AgentService:
 def reset_agent_service() -> None:
     global _agent_service
     _agent_service = None
+
+
+def get_gemini_service() -> GeminiChatService:
+    global _gemini_service
+    if _gemini_service is None:
+        settings = get_settings()
+        _gemini_service = GeminiChatService(
+            api_key=settings.gemini_api_key,
+            model=settings.gemini_model,
+        )
+    return _gemini_service

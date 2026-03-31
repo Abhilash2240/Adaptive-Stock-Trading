@@ -108,6 +108,30 @@ class SaveSettingsPayload(BaseModel):
     notificationsEnabled: bool | None = None
 
 
+class ChatRequest(BaseModel):
+    userId: str = "anonymous-user"
+    message: str = Field(..., min_length=1, max_length=2000)
+    symbol: str | None = Field(default=None, min_length=1, max_length=10)
+
+    @field_validator("message", mode="before")
+    @classmethod
+    def _normalize_message(cls, v: str) -> str:
+        return v.strip()
+
+    @field_validator("symbol", mode="before")
+    @classmethod
+    def _normalize_optional_symbol(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return v.strip().upper()
+
+
+class ChatResponse(BaseModel):
+    answer: str
+    model: str
+    timestamp: datetime
+
+
 # -- Portfolio schemas -----------------------------------------------------
 class Position(BaseModel):
     symbol: str
