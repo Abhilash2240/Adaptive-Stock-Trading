@@ -12,41 +12,67 @@ export default function PortfolioPage() {
   const unrealized = data?.unrealized_pnl ?? 0;
   const positions = data?.positions ?? [];
   const cashPct = totalValue > 0 ? (cash / totalValue) * 100 : 0;
+  const investedPct = Math.max(0, 100 - cashPct);
+  const pnlPct = totalValue > 0 ? (unrealized / totalValue) * 100 : 0;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-[#f1f5f9]">
+    <div className="min-h-screen bg-[#081221] text-[#f1f6ff]">
       <Sidebar
         activeRoute={location}
         onNavigate={setLocation}
       />
 
-      <main className="ml-60 p-6 space-y-6">
+      <main className="ml-72 space-y-5 p-5">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Portfolio</h1>
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-[#7f98bb]">Portfolio Command Center</p>
+            <h1 className="text-3xl font-semibold">Portfolio</h1>
+          </div>
           <p className="text-sm text-[#94a3b8]">Updated: {data?.updated_at ? new Date(data.updated_at).toLocaleTimeString() : "-"}</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <Card label="Total Value" value={money(totalValue)} />
           <Card label="Cash" value={money(cash)} sub={`${cashPct.toFixed(1)}% allocation`} />
           <Card
             label="Unrealized P&L"
             value={`${unrealized >= 0 ? "+" : "-"}${money(Math.abs(unrealized))}`}
-            sub={unrealized >= 0 ? "In profit" : "In drawdown"}
+            sub={`${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(2)}%`}
             positive={unrealized >= 0}
           />
         </div>
 
-        <section className="bg-[#12121a] border border-[#1e1e2e] rounded-xl p-4">
-          <h2 className="font-semibold">Open Positions</h2>
+        <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.4fr_1fr]">
+          <div className="rounded-xl border border-[#233b5f] bg-[#0f1d34] p-4">
+            <p className="text-sm font-semibold text-[#dae8ff]">Performance Trend</p>
+            <div className="mt-3 h-52 rounded-lg border border-[#29466f] bg-[linear-gradient(180deg,#102546_0%,#0b1730_100%)] p-3">
+              <div className="flex h-full items-end gap-2">
+                {[24, 36, 41, 38, 47, 54, 49, 58, 63, 60, 68, 72].map((v, i) => (
+                  <div key={i} className="flex-1 rounded-t bg-[#2d8bff]/80" style={{ height: `${v}%` }} />
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="rounded-xl border border-[#233b5f] bg-[#0f1d34] p-4">
+            <p className="text-sm font-semibold text-[#dae8ff]">Allocation</p>
+            <div className="mt-3 space-y-4">
+              <AllocationBar label="Invested" value={investedPct} color="bg-[#2d8bff]" />
+              <AllocationBar label="Cash" value={cashPct} color="bg-emerald-400" />
+              <AllocationBar label="Risk Buffer" value={Math.max(4, Math.min(16, 100 - investedPct))} color="bg-amber-400" />
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-[#233b5f] bg-[#0f1d34] p-4">
+          <h2 className="font-semibold text-[#e7f1ff]">Open Positions</h2>
           {isLoading ? (
             <p className="text-sm text-[#94a3b8] mt-4">Loading portfolio...</p>
           ) : positions.length === 0 ? (
             <p className="text-sm text-[#94a3b8] mt-4">No open positions. The agent has not entered the market yet.</p>
           ) : (
-            <table className="w-full mt-3 text-sm">
+            <table className="mt-3 w-full text-sm">
               <thead className="text-[#94a3b8] text-xs">
-                <tr className="border-b border-[#1e1e2e]">
+                <tr className="border-b border-[#28466f]">
                   <th className="text-left py-2">Symbol</th>
                   <th className="text-left py-2">Qty</th>
                   <th className="text-left py-2">Avg Price</th>
@@ -60,8 +86,8 @@ export default function PortfolioPage() {
                   const marketValue = p.current_price * p.quantity;
                   const posPositive = p.unrealized_pnl >= 0;
                   return (
-                    <tr key={p.symbol} className="border-b border-[#1e1e2e] hover:bg-[rgba(255,255,255,0.02)]">
-                      <td className="py-2 font-semibold">{p.symbol}</td>
+                    <tr key={p.symbol} className="border-b border-[#1f3556] hover:bg-[#142744]">
+                      <td className="py-2 font-semibold text-[#edf4ff]">{p.symbol}</td>
                       <td className="py-2 font-mono">{p.quantity}</td>
                       <td className="py-2 font-mono">{money(p.avg_price)}</td>
                       <td className="py-2 font-mono">{money(p.current_price)}</td>
@@ -85,13 +111,28 @@ function Card({ label, value, sub, positive }: { label: string; value: string; s
   return (
     <div
       className={[
-        "bg-[#12121a] border border-[#1e1e2e] rounded-xl p-5",
+        "rounded-xl border border-[#233b5f] bg-[#0f1d34] p-5",
         positive == null ? "" : positive ? "shadow-[0_0_12px_rgba(34,197,94,0.15)]" : "shadow-[0_0_12px_rgba(239,68,68,0.15)]",
       ].join(" ")}
     >
-      <p className="text-[#94a3b8] text-[11px] uppercase tracking-wide">{label}</p>
+      <p className="text-[11px] uppercase tracking-wide text-[#89a4c6]">{label}</p>
       <p className="text-2xl font-bold tabular-nums mt-1">{value}</p>
-      {sub && <p className="text-sm mt-1 text-[#94a3b8]">{sub}</p>}
+      {sub && <p className="mt-1 text-sm text-[#94a3b8]">{sub}</p>}
+    </div>
+  );
+}
+
+function AllocationBar({ label, value, color }: { label: string; value: number; color: string }) {
+  const clamped = Math.max(0, Math.min(100, value));
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between text-xs text-[#9fb5d4]">
+        <span>{label}</span>
+        <span>{clamped.toFixed(1)}%</span>
+      </div>
+      <div className="h-2 rounded bg-[#223a5e]">
+        <div className={["h-2 rounded", color].join(" ")} style={{ width: `${clamped}%` }} />
+      </div>
     </div>
   );
 }

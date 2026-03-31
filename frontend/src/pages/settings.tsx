@@ -1,7 +1,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { Bell, Database, LogOut, Moon, Settings, Sun, User } from "lucide-react";
-import { useAuth0 } from "@auth0/auth0-react";
+import { Bell, Database, Moon, RotateCcw, Settings, Sun, User } from "lucide-react";
 
 import { Sidebar } from "@/components/Sidebar";
 import { useTheme } from "@/components/theme-provider";
@@ -9,14 +8,13 @@ import { SaveSettingsPayload, useBackendReady, useSaveSettings, useSettings } fr
 
 export default function SettingsPage() {
   const [location, setLocation] = useLocation();
-  const { user, logout } = useAuth0();
   const { theme, setTheme } = useTheme();
   const { data: backendReady } = useBackendReady();
   const providerName = backendReady?.summary?.provider ?? "--";
-  const userId = user?.sub ?? "";
+  const userId = "anonymous-user";
   const { data: userSettings } = useSettings(userId);
   const saveSettings = useSaveSettings();
-  const [confirmingLogout, setConfirmingLogout] = useState(false);
+  const [confirmingReset, setConfirmingReset] = useState(false);
 
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(
     userSettings?.notificationsEnabled ?? true,
@@ -31,12 +29,13 @@ export default function SettingsPage() {
     setGeminiEnabled(userSettings.geminiEnabled);
   }, [userSettings]);
 
-  const handleLogout = () => {
-    logout({
-      logoutParams: {
-        returnTo: window.location.origin,
-      },
+  const resetSession = async () => {
+    await persist({
+      notificationsEnabled: true,
+      geminiEnabled: false,
+      tradingMode: "paper",
     });
+    setConfirmingReset(false);
   };
 
   const persist = async (partial: Partial<SaveSettingsPayload>) => {
@@ -51,7 +50,7 @@ export default function SettingsPage() {
         onNavigate={setLocation}
       />
 
-      <main className="ml-60 p-6 space-y-6">
+      <main className="ml-72 p-6 space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold flex items-center gap-2"><Settings size={22} /> Settings</h1>
           <span className="text-sm text-[#94a3b8]">Provider: {userSettings?.marketDataProvider ?? providerName}</span>
@@ -59,11 +58,11 @@ export default function SettingsPage() {
 
         <section className="bg-[#12121a] border border-[#1e1e2e] rounded-xl p-5 space-y-4">
           <h2 className="font-semibold flex items-center gap-2"><User size={16} /> Account</h2>
-          <Row label="User" value={user?.email ?? "-"} />
-          <Row label="Status" value={user ? "Active" : "Signed out"} />
+          <Row label="User" value="Guest Trader" />
+          <Row label="Status" value="Active" />
           <Row
             label="Created"
-            value={user?.updated_at ? new Date(user.updated_at).toLocaleDateString() : "-"}
+            value={new Date().toLocaleDateString()}
           />
         </section>
 
@@ -103,18 +102,18 @@ export default function SettingsPage() {
 
         <section className="bg-[#12121a] border border-[#1e1e2e] rounded-xl p-5 space-y-4">
           <h2 className="font-semibold flex items-center gap-2"><Bell size={16} /> Session</h2>
-          {confirmingLogout ? (
+          {confirmingReset ? (
             <div className="space-y-3">
-              <p className="text-sm text-[#94a3b8]">Are you sure you want to sign out of this trading session?</p>
+              <p className="text-sm text-[#94a3b8]">Reset this local trading session to defaults?</p>
               <div className="flex gap-3">
-                <button onClick={handleLogout} className="rounded-md px-4 py-2 bg-[#ef4444] text-white">Confirm Sign Out</button>
-                <button onClick={() => setConfirmingLogout(false)} className="rounded-md px-4 py-2 bg-[#1e1e2e]">Cancel</button>
+                <button onClick={() => void resetSession()} className="rounded-md px-4 py-2 bg-[#ef4444] text-white">Confirm Reset</button>
+                <button onClick={() => setConfirmingReset(false)} className="rounded-md px-4 py-2 bg-[#1e1e2e]">Cancel</button>
               </div>
             </div>
           ) : (
-            <button onClick={handleLogout} className="inline-flex items-center gap-2 rounded-md px-4 py-2 bg-[#ef4444] text-white">
-              <LogOut size={14} />
-              Sign Out
+            <button onClick={() => setConfirmingReset(true)} className="inline-flex items-center gap-2 rounded-md px-4 py-2 bg-[#ef4444] text-white">
+              <RotateCcw size={14} />
+              Reset Session
             </button>
           )}
         </section>

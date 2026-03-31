@@ -5,9 +5,11 @@ import { Bot, Cpu } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
 import {
   AgentStatusResponse,
+  LiveQuoteResponse,
   TradeRecord,
   useAgentStatus,
   useCreateTrade,
+  useLiveQuote,
   usePortfolioState,
   useTradeHistory,
 } from "@/hooks/use-api";
@@ -30,6 +32,7 @@ interface DashboardProps {
   priceChange: number;
   priceChangePct: number;
   latestTick: LiveTick | null;
+  liveQuote: LiveQuoteResponse | null;
   agentStatus: AgentStatusResponse | null;
   recentTrades: TradeRecord[];
   wsConnected: boolean;
@@ -72,20 +75,132 @@ export function Dashboard(props: DashboardProps) {
         onNavigate={props.onNavigate}
       />
 
-      <main className="relative ml-60 space-y-6 p-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold tracking-tight">Adaptive Dashboard</h1>
-          <div className="flex items-center gap-4 text-sm">
-            <div className="flex items-center gap-2">
-              <span className={["h-2.5 w-2.5 rounded-full", props.wsConnected ? "bg-[hsl(var(--accent))] animate-pulse" : "bg-muted-foreground/60"].join(" ")} />
-              <span className="text-muted-foreground">{props.wsConnected ? "Live" : "Offline"}</span>
+      <main className="relative ml-72 space-y-5 p-5">
+        <section className="flex flex-wrap items-center gap-3 rounded-xl border border-[#1f3352] bg-[#101e36] px-4 py-3">
+          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7f98bb]">Popular</span>
+          {[
+            { s: "NIFTY", c: -2.14 },
+            { s: "BTC", c: 0.46 },
+            { s: "INRUSD", c: 0.16 },
+            { s: "ETH", c: 1.16 },
+            { s: "BNB", c: -0.5 },
+            { s: "HDFC", c: -4.1 },
+          ].map((item) => (
+            <div key={item.s} className="rounded-full border border-[#2a4468] bg-[#132849] px-3 py-1 text-xs">
+              <span className="font-semibold text-[#d5e5ff]">{item.s}</span>
+              <span className={item.c >= 0 ? "ml-2 text-emerald-400" : "ml-2 text-rose-400"}>
+                {item.c >= 0 ? "+" : ""}
+                {item.c.toFixed(2)}%
+              </span>
             </div>
-            <span className="text-muted-foreground/60">|</span>
-            <span className="font-mono">{now.toLocaleTimeString()}</span>
-          </div>
-        </div>
+          ))}
+          <input
+            type="search"
+            placeholder="Search stocks, ETFs, and more"
+            className="ml-auto min-w-[250px] flex-1 rounded-full border border-[#2a4468] bg-[#0f1f39] px-4 py-2 text-sm text-[#dcebff] outline-none placeholder:text-[#6f87a8]"
+          />
+        </section>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <section className="rounded-xl border border-[#1d4f87] bg-[#0f67ba] px-4 py-2 text-sm text-[#eaf3ff]">
+          Price {props.priceChange >= 0 ? "up" : "down"}: {signedPct(props.priceChangePct)} from the previous close as of {now.toLocaleTimeString()}
+        </section>
+
+        <section className="rounded-2xl border border-[#243a5d] bg-[#121f38] p-4 shadow-xl">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#7f98bb]">{props.currentSymbol} • delayed by 15 minutes</p>
+              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[#f2f6ff]">{props.currentSymbol} ({props.currentSymbol})</h1>
+              <p className="mt-1 text-5xl font-bold leading-none text-[#f7faff]">{fmt(props.currentPrice).replace("$", "")}</p>
+              <p className={props.priceChange >= 0 ? "mt-1 text-sm text-emerald-400" : "mt-1 text-sm text-rose-400"}>
+                {signed(props.priceChange)} ({signedPct(props.priceChangePct)})
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                "Watchlist",
+                "Compare",
+                "Join the discussion",
+              ].map((action) => (
+                <button key={action} className="rounded-full border border-[#35527d] bg-[#162a49] px-4 py-2 text-sm text-[#dce9ff]">
+                  {action}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {[
+              "Summary",
+              "Sentiment",
+              "Related",
+            ].map((tab, idx) => (
+              <button
+                key={tab}
+                className={idx === 0 ? "rounded-full bg-[#0f67ba] px-4 py-1.5 text-sm font-medium text-[#eff6ff]" : "rounded-full border border-[#35527d] px-4 py-1.5 text-sm text-[#c6d8f6]"}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[1.8fr_0.95fr]">
+            <div className="rounded-xl border border-[#2a4468] bg-[#0f1d34] p-3">
+              <div className="mb-2 flex flex-wrap gap-2">
+                {[
+                  "1D",
+                  "5D",
+                  "1M",
+                  "3M",
+                  "YTD",
+                  "1Y",
+                  "3Y",
+                  "5Y",
+                  "Max",
+                ].map((range, index) => (
+                  <button key={range} className={index === 0 ? "rounded-full bg-[#0f67ba] px-3 py-1 text-xs font-semibold text-white" : "rounded-full border border-[#35527d] px-3 py-1 text-xs text-[#a7bfde]"}>
+                    {range}
+                  </button>
+                ))}
+              </div>
+
+              <div className="h-72 rounded-lg border border-[#2a4468] bg-[#0b182d] p-3">
+                <Sparkline values={props.priceHistory} />
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+                {props.symbols.slice(0, 4).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => props.onSymbolChange(s)}
+                    className={[
+                      "rounded-lg border px-3 py-2 text-left text-sm",
+                      props.currentSymbol === s
+                        ? "border-[#0f67ba] bg-[#0f67ba]/20 text-[#d9ebff]"
+                        : "border-[#2a4468] bg-[#11213d] text-[#a7bfde] hover:bg-[#182d4f]",
+                    ].join(" ")}
+                  >
+                    <p className="font-semibold">{s}</p>
+                    <p className="text-xs text-[#85a1c3]">Quick compare</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-[#2a4468] bg-[#0f1d34] p-4">
+              <p className="text-sm font-semibold text-[#e1eeff]">Market Stats</p>
+              <div className="mt-3 space-y-3 text-sm">
+                <MetricRow label="Day Range" value={`${fmt(props.liveQuote?.low ?? 0)} - ${fmt(props.liveQuote?.high ?? 0)}`} />
+                <MetricRow label="Open / Close" value={`${fmt(props.liveQuote?.open ?? 0)} / ${fmt(props.currentPrice)}`} />
+                <MetricRow label="Volume" value={(props.liveQuote?.volume ?? 0).toLocaleString()} />
+                <MetricRow label="1 Month Return" value={signedPct(props.priceChangePct * 4.5)} positive={props.priceChangePct >= 0} />
+                <MetricRow label="3 Months Return" value={signedPct(props.priceChangePct * 8.2)} positive={props.priceChangePct >= 0} />
+                <MetricRow label="1 Year Return" value={signedPct(props.priceChangePct * 18.4)} positive={props.priceChangePct >= 0} />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard label="Portfolio Value" value={fmt(props.portfolioValue)} delta={`${signed(props.portfolioDelta)} (${signedPct(props.portfolioDeltaPct)})`} positive={props.portfolioDelta >= 0} />
           <StatCard label="Cash Available" value={fmt(props.cash)} sub={`${props.cashPct.toFixed(1)}% of portfolio`} />
           <StatCard label="Open Positions" value={String(props.openPositionsCount)} sub={`across ${props.openPositionsCount} symbols`} />
@@ -93,36 +208,23 @@ export function Dashboard(props: DashboardProps) {
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          <section className="xl:col-span-2 rounded-xl border border-border/80 bg-card/80 p-4 shadow-lg backdrop-blur-sm">
-            <div className="flex items-baseline justify-between">
-              <div>
-                <h2 className="font-semibold text-lg">{props.currentSymbol}</h2>
-                <p className="text-sm text-muted-foreground">{fmt(props.currentPrice)}</p>
-              </div>
-              <p className={props.priceChange >= 0 ? "text-emerald-500" : "text-rose-500"}>{signed(props.priceChange)} ({signedPct(props.priceChangePct)})</p>
-            </div>
-
-            <div className="mt-3 h-72 rounded-lg border border-border/70 bg-background/70 p-3">
-              <Sparkline values={props.priceHistory} />
-            </div>
-
-            <div className="mt-3 flex gap-2">
-              {props.symbols.map((s) => (
+          <section className="rounded-xl border border-[#243a5d] bg-[#121f38] p-4 shadow-lg">
+            <h3 className="mb-3 text-lg font-semibold text-[#f2f6ff]">Quick Compare</h3>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {props.symbols.slice(0, 6).map((s, index) => (
                 <button
                   key={s}
                   onClick={() => props.onSymbolChange(s)}
-                  className={[
-                    "px-3 py-1.5 rounded-md text-sm transition-all duration-150",
-                    props.currentSymbol === s ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary",
-                  ].join(" ")}
+                  className="rounded-lg border border-[#2a4468] bg-[#0f1d34] px-3 py-2 text-left"
                 >
-                  {s}
+                  <p className="text-sm font-semibold text-[#dcebff]">{s}</p>
+                  <p className={index % 2 === 0 ? "text-xs text-rose-400" : "text-xs text-emerald-400"}>{index % 2 === 0 ? "-2.14%" : "+1.28%"}</p>
                 </button>
               ))}
             </div>
           </section>
 
-          <section className="rounded-xl border border-border/80 bg-card/80 p-4 shadow-lg backdrop-blur-sm">
+          <section className="rounded-xl border border-[#243a5d] bg-[#121f38] p-4 shadow-lg">
             <h3 className="flex items-center gap-2 font-semibold"><Cpu size={16} className="text-primary" />AI Signal</h3>
             <div className="mt-4 text-center">
               <span className={badgeClass(props.latestTick?.action_signal)}>{props.latestTick?.action_signal ?? "HOLD"}</span>
@@ -161,6 +263,17 @@ export function Dashboard(props: DashboardProps) {
               loading={props.placingTrade}
               error={props.tradeError}
             />
+          </section>
+
+          <section className="rounded-xl border border-[#243a5d] bg-[#121f38] p-4 shadow-lg">
+            <h3 className="text-lg font-semibold text-[#f2f6ff]">Session</h3>
+            <div className="mt-3 space-y-3 text-sm text-[#b2c7e6]">
+              <MetricRow label="Connection" value={props.wsConnected ? "Live" : "Offline"} positive={props.wsConnected} />
+              <MetricRow label="Market Status" value={props.liveQuote?.market_status ?? "unknown"} positive={props.liveQuote?.market_status === "open"} />
+              <MetricRow label="Timestamp" value={now.toLocaleTimeString()} />
+              <MetricRow label="Model" value={props.agentStatus?.model_version ?? "-"} />
+              <MetricRow label="Epsilon" value={String(props.agentStatus?.epsilon ?? "-")} />
+            </div>
           </section>
         </div>
 
@@ -277,6 +390,17 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   );
 }
 
+function MetricRow({ label, value, positive }: { label: string; value: string; positive?: boolean }) {
+  return (
+    <div className="flex items-center justify-between border-b border-[#263f64] pb-2">
+      <span className="text-[#8ca6c8]">{label}</span>
+      <span className={positive == null ? "font-medium text-[#e7f0ff]" : positive ? "font-medium text-emerald-400" : "font-medium text-rose-400"}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
 function TradeComposer({
   symbol,
   price,
@@ -365,6 +489,7 @@ export default function DashboardPage() {
   const { data: portfolio } = usePortfolioState(true);
   const { data: trades = [] } = useTradeHistory(1, {});
   const { data: agentStatus } = useAgentStatus(true);
+  const { data: liveQuote } = useLiveQuote(currentSymbol, true);
   const createTrade = useCreateTrade();
 
   const symbols = useMemo(() => {
@@ -389,9 +514,10 @@ export default function DashboardPage() {
   });
 
   const currentPosition = portfolio?.positions.find((p) => p.symbol === currentSymbol);
-  const currentPrice = latestTick?.close ?? currentPosition?.current_price ?? 0;
-  const priceChange = latestTick ? latestTick.close - latestTick.open : 0;
-  const priceChangePct = latestTick && latestTick.open !== 0 ? (priceChange / latestTick.open) * 100 : 0;
+  const currentPrice = latestTick?.close ?? liveQuote?.price ?? currentPosition?.current_price ?? 0;
+  const openingPrice = latestTick?.open ?? liveQuote?.open ?? 0;
+  const priceChange = currentPrice - openingPrice;
+  const priceChangePct = openingPrice !== 0 ? (priceChange / openingPrice) * 100 : 0;
 
   const totalValue = portfolio?.total_value ?? 0;
   const cash = portfolio?.cash ?? 0;
@@ -428,6 +554,7 @@ export default function DashboardPage() {
       priceChange={priceChange}
       priceChangePct={priceChangePct}
       latestTick={latestTick}
+      liveQuote={liveQuote ?? null}
       agentStatus={agentStatus ?? null}
       recentTrades={trades.slice(0, 5)}
       wsConnected={connected}
