@@ -68,6 +68,31 @@ class UserSettingsDB(SQLModel, table=True):
 
 
 # --------------------------------------------------------------------------- #
+#  Stocks Master Table
+# --------------------------------------------------------------------------- #
+
+class StockDB(SQLModel, table=True):
+    """Master table of tracked stocks/symbols."""
+
+    __tablename__ = "stocks"
+
+    symbol: str = Field(primary_key=True, max_length=10)
+    name: str = Field(max_length=200)
+    exchange: str = Field(default="NASDAQ", max_length=20)
+    sector: Optional[str] = Field(default=None, max_length=100)
+    industry: Optional[str] = Field(default=None, max_length=100)
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(
+        default_factory=utcnow,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now()),
+    )
+    updated_at: datetime = Field(
+        default_factory=utcnow,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now()),
+    )
+
+
+# --------------------------------------------------------------------------- #
 #  Market Data (time-series)
 # --------------------------------------------------------------------------- #
 
@@ -112,6 +137,33 @@ class OHLCVDB(SQLModel, table=True):
     timestamp: datetime = Field(
         sa_column=Column(DateTime(timezone=True), nullable=False)
     )
+
+
+class PredictedPriceDB(SQLModel, table=True):
+    """AI/ML price predictions for stocks."""
+
+    __tablename__ = "predicted_prices"
+    __table_args__ = (
+        Index("ix_predicted_prices_symbol_ts", "stock_symbol", "predicted_at"),
+    )
+
+    id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
+    )
+    stock_symbol: str = Field(max_length=10, index=True)
+    predicted_price: float
+    predicted_at: datetime = Field(
+        default_factory=utcnow,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now()),
+    )
+    target_date: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True)),
+    )
+    confidence_score: float = Field(default=0.0)  # 0.0 to 1.0
+    model_used: str = Field(default="unknown", max_length=100)
+    prediction_type: str = Field(default="price", max_length=20)  # price | direction | volatility
 
 
 # --------------------------------------------------------------------------- #
@@ -163,13 +215,40 @@ class PositionDB(SQLModel, table=True):
 
 
 class PortfolioStateDB(SQLModel, table=True):
+    """Aggregate portfolio state for a user."""
+
     __tablename__ = "portfolio_state"
 
     id: int | None = Field(default=None, primary_key=True)
-    user_id: str = Field(index=True, unique=True)
+    user_id: str = Field(foreign_key="users.id", index=True, unique=True)
     cash: float = Field(default=10_000.0)
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow
+        default_factory=utcnow,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now()),
+    )
+
+
+# --------------------------------------------------------------------------- #
+#  Watchlists
+# --------------------------------------------------------------------------- #
+
+class WatchlistDB(SQLModel, table=True):
+    """User watchlists for tracking favorite stocks."""
+
+    __tablename__ = "watchlists"
+    __table_args__ = (
+        Index("ix_watchlists_user_symbol", "user_id", "stock_symbol", unique=True),
+    )
+
+    id: str = Field(default_factory=new_uuid, primary_key=True)
+    user_id: str = Field(foreign_key="users.id", index=True)
+    stock_symbol: str = Field(max_length=10, index=True)
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    alert_price_above: Optional[float] = None
+    alert_price_below: Optional[float] = None
+    created_at: datetime = Field(
+        default_factory=utcnow,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now()),
     )
 
 

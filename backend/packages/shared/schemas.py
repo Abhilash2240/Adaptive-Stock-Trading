@@ -108,10 +108,24 @@ class SaveSettingsPayload(BaseModel):
     notificationsEnabled: bool | None = None
 
 
+class ChatContext(BaseModel):
+    """Context for AI chat requests."""
+    stock_symbol: str | None = Field(default=None, min_length=1, max_length=10)
+    current_price: float | None = Field(default=None, ge=0)
+    
+    @field_validator("stock_symbol", mode="before")
+    @classmethod
+    def _normalize_symbol(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return v.strip().upper()
+
+
 class ChatRequest(BaseModel):
     userId: str = "anonymous-user"
     message: str = Field(..., min_length=1, max_length=2000)
     symbol: str | None = Field(default=None, min_length=1, max_length=10)
+    context: ChatContext | None = None  # Enhanced context support
 
     @field_validator("message", mode="before")
     @classmethod

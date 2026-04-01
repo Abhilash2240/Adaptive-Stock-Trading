@@ -3,6 +3,9 @@ import { useLocation } from "wouter";
 import { Bot, Cpu } from "lucide-react";
 
 import { Sidebar } from "@/components/Sidebar";
+import { PriceIndicator, PredictedBadge } from "@/components/PriceIndicator";
+import { ChatbotWidget } from "@/components/ChatbotWidget";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   AgentStatusResponse,
   LiveQuoteResponse,
@@ -64,7 +67,13 @@ export function Dashboard(props: DashboardProps) {
 
   const maxQ = Math.max(qValues.BUY, qValues.SELL, qValues.HOLD, 0.01);
 
+  // Prediction flags from WebSocket data
+  const isPredicted = props.latestTick?.is_predicted ?? false;
+  const dataConfidence = props.latestTick?.data_confidence ?? 0;
+  const predictedPrice = props.latestTick?.predicted_price;
+
   return (
+    <TooltipProvider>
     <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
       <div className="pointer-events-none absolute inset-0 opacity-90">
         <div className="absolute -top-40 -left-16 h-96 w-96 rounded-full bg-[radial-gradient(circle_at_center,hsl(var(--primary)/0.35),transparent_65%)]" />
@@ -108,9 +117,21 @@ export function Dashboard(props: DashboardProps) {
         <section className="rounded-2xl border border-[#243a5d] bg-[#121f38] p-4 shadow-xl">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-[#7f98bb]">{props.currentSymbol} • delayed by 15 minutes</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#7f98bb]">
+                {props.currentSymbol} • {isPredicted ? "~estimated" : "delayed by 15 minutes"}
+              </p>
               <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[#f2f6ff]">{props.currentSymbol} ({props.currentSymbol})</h1>
-              <p className="mt-1 text-5xl font-bold leading-none text-[#f7faff]">{fmt(props.currentPrice).replace("$", "")}</p>
+              <div className="mt-1 flex items-center gap-2">
+                <p className="text-5xl font-bold leading-none text-[#f7faff]">{fmt(props.currentPrice).replace("$", "")}</p>
+                <PriceIndicator
+                  currentPrice={props.currentPrice}
+                  predictedPrice={predictedPrice}
+                  isPredicted={isPredicted}
+                  confidence={dataConfidence}
+                  size="lg"
+                />
+                {isPredicted && <PredictedBadge confidence={dataConfidence} className="ml-2" />}
+              </div>
               <p className={props.priceChange >= 0 ? "mt-1 text-sm text-emerald-400" : "mt-1 text-sm text-rose-400"}>
                 {signed(props.priceChange)} ({signedPct(props.priceChangePct)})
               </p>
@@ -316,7 +337,11 @@ export function Dashboard(props: DashboardProps) {
           )}
         </section>
       </main>
+
+      {/* AI Chat Assistant with stock context */}
+      <ChatbotWidget currentSymbol={props.currentSymbol} currentPrice={props.currentPrice} />
     </div>
+    </TooltipProvider>
   );
 }
 

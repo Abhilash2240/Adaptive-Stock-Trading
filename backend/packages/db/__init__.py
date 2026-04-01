@@ -1,1 +1,86 @@
 """Database package — models, engine, session, repositories."""
+
+from packages.db.models import (
+    UserDB,
+    UserSettingsDB,
+    StockDB,
+    QuoteDB,
+    OHLCVDB,
+    PredictedPriceDB,
+    OrderDB,
+    PositionDB,
+    PortfolioStateDB,
+    WatchlistDB,
+    AgentActionDB,
+    ModelArtifactDB,
+    TrainingRunDB,
+    TrainingMetricDB,
+    BacktestRunDB,
+    AuditLogDB,
+)
+
+from packages.db.engine import (
+    get_engine,
+    get_session,
+    get_session_ctx,
+    init_db,
+    close_db,
+)
+
+from packages.db.repositories import (
+    UserRepository,
+    UserSettingsRepository,
+    StockRepository,
+    QuoteRepository,
+    OHLCVRepository,
+    PredictedPriceRepository,
+    OrderRepository,
+    PositionRepository,
+    WatchlistRepository,
+    AgentActionRepository,
+    ModelArtifactRepository,
+    TrainingRepository,
+    BacktestRepository,
+    AuditLogRepository,
+)
+
+__all__ = [
+    # Models
+    "UserDB",
+    "UserSettingsDB",
+    "StockDB",
+    "QuoteDB",
+    "OHLCVDB",
+    "PredictedPriceDB",
+    "OrderDB",
+    "PositionDB",
+    "PortfolioStateDB",
+    "WatchlistDB",
+    "AgentActionDB",
+    "ModelArtifactDB",
+    "TrainingRunDB",
+    "TrainingMetricDB",
+    "BacktestRunDB",
+    "AuditLogDB",
+    # Engine
+    "get_engine",
+    "get_session",
+    "get_session_ctx",
+    "init_db",
+    "close_db",
+    # Repositories
+    "UserRepository",
+    "UserSettingsRepository",
+    "StockRepository",
+    "QuoteRepository",
+    "OHLCVRepository",
+    "PredictedPriceRepository",
+    "OrderRepository",
+    "PositionRepository",
+    "WatchlistRepository",
+    "AgentActionRepository",
+    "ModelArtifactRepository",
+    "TrainingRepository",
+    "BacktestRepository",
+    "AuditLogRepository",
+]

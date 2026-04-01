@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 
@@ -14,11 +14,31 @@ class GeminiChatService:
     def is_configured(self) -> bool:
         return bool(self.api_key)
 
-    async def generate_reply(self, question: str, symbol: str | None = None) -> str:
+    async def generate_reply(
+        self,
+        question: str,
+        symbol: str | None = None,
+        current_price: float | None = None,
+    ) -> str:
+        """
+        Generate a reply using Google Gemini API.
+        
+        Args:
+            question: User's question
+            symbol: Optional stock symbol for context
+            current_price: Optional current price for context
+        
+        Returns:
+            AI-generated response text
+        """
         if not self.is_configured:
             raise ValueError("Gemini API key is missing")
 
-        prompt = self._build_prompt(question=question, symbol=symbol)
+        prompt = self._build_prompt(
+            question=question,
+            symbol=symbol,
+            current_price=current_price,
+        )
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
             f"?key={self.api_key}"
@@ -47,13 +67,29 @@ class GeminiChatService:
             raise RuntimeError("Gemini did not return a usable response")
         return answer
 
-    def _build_prompt(self, question: str, symbol: str | None = None) -> str:
-        symbol_hint = f"Current symbol context: {symbol}." if symbol else ""
+    def _build_prompt(
+        self,
+        question: str,
+        symbol: str | None = None,
+        current_price: float | None = None,
+    ) -> str:
+        """Build the prompt with stock context."""
+        context_parts = []
+        
+        if symbol:
+            context_parts.append(f"Stock symbol: {symbol}")
+        if current_price is not None:
+            context_parts.append(f"Current price: ${current_price:.2f}")
+        
+        context_str = " | ".join(context_parts) if context_parts else ""
+        context_hint = f"[Market Context: {context_str}]\n\n" if context_str else ""
+        
         return (
-            "You are AdaptiveTrader Assistant. "
-            "Answer clearly and directly for a retail trading dashboard user. "
-            "If financial risk is involved, add a short risk reminder. "
-            f"{symbol_hint}\n\n"
+            "You are AdaptiveTrader Assistant, an AI assistant for a retail stock trading dashboard. "
+            "Provide clear, actionable insights for traders. "
+            "When discussing stocks, include relevant technical factors when appropriate. "
+            "Always add a brief risk reminder when financial decisions are involved.\n\n"
+            f"{context_hint}"
             f"User question: {question}"
         )
 

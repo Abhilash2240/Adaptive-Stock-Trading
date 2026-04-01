@@ -17,10 +17,13 @@ from packages.db.models import (
     AuditLogDB,
     UserDB,
     UserSettingsDB,
+    StockDB,
     QuoteDB,
     OHLCVDB,
+    PredictedPriceDB,
     OrderDB,
     PositionDB,
+    WatchlistDB,
     AgentActionDB,
     ModelArtifactDB,
     TrainingRunDB,
@@ -395,3 +398,149 @@ class AuditLogRepository:
         )
         result = await self.session.execute(stmt)
         return result.scalars().all()
+
+
+# --------------------------------------------------------------------------- #
+#  Stock Repository
+# --------------------------------------------------------------------------- #
+
+class StockRepository:
+    """CRUD for the ``stocks`` master table."""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def upsert(self, symbol: str, name: str, **kwargs) -> StockDB:
+        stmt = select(StockDB).where(StockDB.symbol == symbol)
+        result = await self.session.execute(stmt)
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            existing.name = name
+            for k, v in kwargs.items():
+                if hasattr(existing, k):
+                    setattr(existing, k, v)
+            existing.updated_at = utcnow()
+            self.session.add(existing)
+            await self.session.flush()
+            return existing
+
+        stock = StockDB(symbol=symbol, name=name, **kwargs)
+        self.session.add(stock)
+        await self.session.flush()
+        return stock
+
+    async def get(self, symbol: str) -> StockDB | None:
+        stmt = select(StockDB).where(StockDB.symbol == symbol)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def list_active(self) -> Sequence[StockDB]:
+        stmt = select(StockDB).where(StockDB.is_active == True).order_by(StockDB.symbol)
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
+
+
+# --------------------------------------------------------------------------- #
+#  Predicted Price Repository
+# --------------------------------------------------------------------------- #
+
+class PredictedPriceRepository:
+    """CRUD for AI price predictions."""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def insert(
+        self,
+        stock_symbol: str,
+        predicted_price: float,
+        confidence_score: float,
+        model_used: str,
+        target_date: datetime | None = None,
+    ) -> PredictedPriceDB:
+        prediction = PredictedPriceDB(
+            stock_symbol=stock_symbol,
+            predicted_price=predicted_price,
+            confidence_score=confidence_score,
+            model_used=model_used,
+            target_date=target_date,
+        )
+        self.session.add(prediction)
+        await self.session.flush()
+        return prediction
+
+    async def get_latest(self, stock_symbol: str, limit: int = 10) -> Sequence[PredictedPriceDB]:
+        stmt = (
+            select(PredictedPriceDB)
+            .where(PredictedPriceDB.stock_symbol == stock_symbol)
+            .order_by(PredictedPriceDB.predicted_at.desc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
+
+    async def get_by_model(self, model_used: str, limit: int = 100) -> Sequence[PredictedPriceDB]:
+        stmt = (
+            select(PredictedPriceDB)
+            .where(PredictedPriceDB.model_used == model_used)
+            .order_by(PredictedPriceDB.predicted_at.desc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
+
+
+# --------------------------------------------------------------------------- #
+#  Watchlist Repository
+# --------------------------------------------------------------------------- #
+
+class WatchlistRepository:
+    """CRUD for user watchlists."""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def add(self, user_id: str, stock_symbol: str, **kwargs) -> WatchlistDB:
+        entry = WatchlistDB(user_id=user_id, stock_symbol=stock_symbol, **kwargs)
+        self.session.add(entry)
+        await self.session.flush()
+        return entry
+
+    async def remove(self, user_id: str, stock_symbol: str) -> bool:
+        stmt = delete(WatchlistDB).where(
+            WatchlistDB.user_id == user_id,
+            WatchlistDB.stock_symbol == stock_symbol,
+        )
+        result = await self.session.execute(stmt)
+        return result.rowcount > 0
+
+    async def get_user_watchlist(self, user_id: str) -> Sequence[WatchlistDB]:
+        stmt = (
+            select(WatchlistDB)
+            .where(WatchlistDB.user_id == user_id)
+            .order_by(WatchlistDB.created_at.desc())
+        )
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
+
+    async def update_alerts(
+        self,
+        user_id: str,
+        stock_symbol: str,
+        alert_price_above: float | None = None,
+        alert_price_below: float | None = None,
+    ) -> WatchlistDB | None:
+        stmt = select(WatchlistDB).where(
+            WatchlistDB.user_id == user_id,
+            WatchlistDB.stock_symbol == stock_symbol,
+        )
+        result = await self.session.execute(stmt)
+        entry = result.scalar_one_or_none()
+
+        if entry:
+            entry.alert_price_above = alert_price_above
+            entry.alert_price_below = alert_price_below
+            self.session.add(entry)
+            await self.session.flush()
+        return entry

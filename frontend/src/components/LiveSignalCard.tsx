@@ -33,6 +33,8 @@ export function LiveSignalCard({ symbol = "AAPL" }: Props) {
   }
 
   const pct = Math.round(tick.confidence * 100);
+  const isPredicted = tick.is_predicted ?? false;
+  const dataConfidence = tick.data_confidence ?? 0;
 
   return (
     <div
@@ -61,6 +63,21 @@ export function LiveSignalCard({ symbol = "AAPL" }: Props) {
         >
           {tick.action_signal}
         </span>
+        {isPredicted && (
+          <span
+            style={{
+              padding: "2px 8px",
+              borderRadius: "999px",
+              fontSize: "0.7rem",
+              fontWeight: 500,
+              background: "rgba(245, 158, 11, 0.2)",
+              color: "#f59e0b",
+            }}
+            title={`Estimated price (${Math.round(dataConfidence * 100)}% confidence)`}
+          >
+            ~predicted
+          </span>
+        )}
       </div>
 
       <div style={{ fontSize: "0.8rem", color: "#888" }}>

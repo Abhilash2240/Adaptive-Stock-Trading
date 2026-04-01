@@ -17,10 +17,12 @@ from slowapi.util import get_remote_address
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 from typing import Annotated
+import asyncio
 
 from packages.agent.service import AgentService
 from packages.ai.gemini_client import GeminiChatService
 from packages.data.provider import DataProvider, get_data_provider
+from packages.data.rate_limiter import get_rate_limiter
 from packages.db.engine import get_session_ctx
 from packages.db.models import UserDB
 from packages.db.repositories import UserRepository
@@ -40,9 +42,10 @@ from packages.shared.security import (
     InputValidator,
     audit_logger,
     limiter,
+    get_current_user,
+    get_optional_user,
 )
-from .routes import health
-from .routes.portfolio import router as portfolio_router
+from .routes import health, portfolio, watchlist
 
 # Security setup
 security_scheme = HTTPBearer()
@@ -134,7 +137,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Include routers
     app.include_router(getattr(health, "router", health))
-    app.include_router(portfolio_router)
+    app.include_router(getattr(portfolio, "router", portfolio))
+    app.include_router(getattr(watchlist, "router", watchlist))
 
     instrumentator = Instrumentator(should_ignore_untemplated=True)
     instrumentator.instrument(app).expose(
@@ -211,11 +215,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict:
         """
         Return a single-stock quote.
+        
         If the active provider is TwelveData, fetches rich data (open/high/low/
-        close/volume/change).  Otherwise returns the latest streamed price.
+        close/volume/change). If rate limited, returns predicted price with
+        is_predicted flag.
+        
+        Response includes:
+        - is_predicted: True if price is predicted due to rate limiting
+        - confidence: Prediction confidence score (1.0 for real data)
         """
-        sym = symbol.strip().upper()
+        sym = validator.validate_symbol(symbol)
         from packages.data.adapters.twelvedata import TwelveDataProvider
+        
         if isinstance(provider, TwelveDataProvider):
             try:
                 data = await provider.fetch_quote_detail(sym)
@@ -227,6 +238,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     market_status = "open" if is_market_open else "closed"
 
                 raw_price = data.get("close", data.get("price", 0))
+                is_predicted = data.get("is_predicted", False)
+                confidence = data.get("confidence", 1.0)
+                
                 return {
                     "symbol": data.get("symbol", sym),
                     "name": data.get("name", sym),
@@ -243,6 +257,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "market_status": market_status,
                     "last_quote_time": data.get("datetime", ""),
                     "provider": "twelvedata",
+                    "is_predicted": is_predicted,
+                    "confidence": confidence,
                 }
             except Exception as exc:
                 raise HTTPException(status_code=502, detail=f"Twelve Data error: {exc}")
@@ -254,6 +270,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "is_market_open": False,
             "market_status": "unknown",
             "last_quote_time": "",
+            "is_predicted": False,
+            "confidence": 1.0,
         }
 
     async def ensure_default_user_exists() -> None:
@@ -335,6 +353,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         payload: ChatRequest,
     ) -> ChatResponse:
+        """
+        Chat with AI assistant (Gemini).
+        
+        Accepts message with optional context:
+        - symbol: Stock symbol for context
+        - context: { stock_symbol, current_price } for enhanced context
+        
+        Returns AI-generated response.
+        """
         await ensure_default_user_exists()
         resolved_user_id = payload.userId or DEFAULT_USER_ID
 
@@ -353,17 +380,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not gemini.is_configured:
             raise HTTPException(
                 status_code=500,
-                detail="Gemini API key is not configured on the server.",
+                detail="Gemini API key is not configured on the server. Set GEMINI_API_KEY environment variable.",
             )
+
+        # Extract context (prefer context object, fall back to symbol)
+        symbol = None
+        current_price = None
+        
+        if payload.context:
+            symbol = payload.context.stock_symbol
+            current_price = payload.context.current_price
+        elif payload.symbol:
+            symbol = payload.symbol
 
         await audit_logger.log_user_action(
             user_id=resolved_user_id,
             action="chat_request",
-            details={"symbol": payload.symbol or "", "message_length": len(payload.message)},
+            details={
+                "symbol": symbol or "",
+                "current_price": current_price,
+                "message_length": len(payload.message),
+            },
         )
 
         try:
-            answer = await gemini.generate_reply(payload.message, payload.symbol)
+            answer = await gemini.generate_reply(
+                question=payload.message,
+                symbol=symbol,
+                current_price=current_price,
+            )
         except httpx.HTTPStatusError as exc:
             logger.warning("Gemini API error: %s", exc)
             raise HTTPException(status_code=502, detail="Gemini API call failed")
@@ -382,55 +427,147 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         websocket: WebSocket,
         provider: DataProvider = Depends(get_data_provider),
     ) -> None:
+        """
+        WebSocket endpoint for streaming real-time stock quotes at 1-second intervals.
+        
+        Streams quote data to connected clients with agent action signals.
+        If real data is unavailable, seamlessly streams predicted data.
+        Handles disconnections gracefully and logs all connection events.
+        """
         endpoint = "/ws/quotes"
+        client_info = f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown"
+        rate_limiter = get_rate_limiter()
+        
         await audit_logger.log_user_action(
             user_id=DEFAULT_USER_ID,
             action="websocket_connect",
-            details={"endpoint": endpoint}
+            details={"endpoint": endpoint, "client": client_info}
         )
-            
-        await websocket.accept()
-        websocket_connected(endpoint)
-        agent_service = get_agent_service()
+        
         try:
+            await websocket.accept()
+            logger.info(f"WebSocket client connected: {client_info}")
+            websocket_connected(endpoint)
+        except Exception as exc:
+            logger.error(f"WebSocket accept failed for {client_info}: {exc}")
+            websocket_closed(endpoint, code="accept_failed")
+            return
+            
+        agent_service = get_agent_service()
+        last_quotes: dict[str, dict] = {}  # Cache for seamless streaming
+        
+        async def stream_with_fallback():
+            """Stream quotes with automatic fallback to predictions."""
             async for quote in provider.stream_quotes():
                 quote_payload = quote.model_dump(mode="json")
-                agent_service.on_quote(quote_payload)
-
-                _default_portfolio = {
-                    "position_flag": 0,
-                    "unrealized_pnl_pct": 0.0,
-                    "cash": 10_000.0,
-                    "total_value": 10_000.0,
-                    "trade_count_today": 0,
-                }
-
-                agent_action = agent_service.get_action(
-                    symbol=quote_payload["symbol"],
-                    portfolio=_default_portfolio,
-                )
-
-                last_price = float(quote_payload.get("price", 0.0))
-                broadcast_payload = {
-                    **quote_payload,
-                    "open": last_price,
-                    "high": last_price,
-                    "low": last_price,
-                    "close": last_price,
-                    "action_signal": agent_action.side.value,
-                    "confidence": round(agent_action.confidence, 4),
-                    "signal_timestamp": agent_action.generated_at.isoformat(),
-                }
-
-                await websocket.send_json(broadcast_payload)
-                websocket_message_sent(endpoint)
+                
+                # Check if this is a predicted quote
+                is_predicted = getattr(quote, '_is_predicted', False)
+                confidence = getattr(quote, '_confidence', 1.0) if is_predicted else 1.0
+                
+                quote_payload["is_predicted"] = is_predicted
+                quote_payload["data_confidence"] = round(confidence, 2)
+                
+                # Cache the quote for fallback
+                last_quotes[quote_payload["symbol"]] = quote_payload
+                
+                yield quote_payload
+        
+        try:
+            # Create a background task for the provider stream
+            quote_queue: asyncio.Queue = asyncio.Queue()
+            stream_task = None
+            
+            async def fill_queue():
+                try:
+                    async for quote_payload in stream_with_fallback():
+                        await quote_queue.put(quote_payload)
+                except asyncio.CancelledError:
+                    pass
+            
+            stream_task = asyncio.create_task(fill_queue())
+            
+            # Stream at 1-second intervals
+            while True:
+                try:
+                    # Try to get quote with timeout
+                    quote_payload = await asyncio.wait_for(quote_queue.get(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    # No new quote available, use prediction for cached symbols
+                    for sym, cached in last_quotes.items():
+                        prediction = rate_limiter.get_prediction(sym)
+                        if prediction:
+                            quote_payload = {
+                                **cached,
+                                "price": prediction["price"],
+                                "is_predicted": True,
+                                "data_confidence": prediction["confidence"],
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            }
+                            await _send_quote(websocket, quote_payload, agent_service, endpoint)
+                    continue
+                
+                await _send_quote(websocket, quote_payload, agent_service, endpoint)
+                
         except WebSocketDisconnect as exc:
-            websocket_closed(endpoint, code=str(exc.code or "disconnect"))
-        except Exception:
+            disconnect_code = str(exc.code) if exc.code else "normal"
+            logger.info(f"WebSocket client disconnected: {client_info} (code: {disconnect_code})")
+            websocket_closed(endpoint, code=disconnect_code)
+        except Exception as exc:
+            logger.error(f"WebSocket error for {client_info}: {exc}")
             websocket_closed(endpoint, code="error")
+            try:
+                await websocket.close(code=1011, reason="Internal server error")
+            except Exception:
+                pass
+        finally:
+            if stream_task:
+                stream_task.cancel()
+                try:
+                    await stream_task
+                except asyncio.CancelledError:
+                    pass
+    
+    async def _send_quote(
+        websocket: WebSocket,
+        quote_payload: dict,
+        agent_service: AgentService,
+        endpoint: str,
+    ) -> None:
+        """Helper to send a quote with agent action signal."""
+        try:
+            agent_service.on_quote(quote_payload)
+
+            _default_portfolio = {
+                "position_flag": 0,
+                "unrealized_pnl_pct": 0.0,
+                "cash": 10_000.0,
+                "total_value": 10_000.0,
+                "trade_count_today": 0,
+            }
+
+            agent_action = agent_service.get_action(
+                symbol=quote_payload["symbol"],
+                portfolio=_default_portfolio,
+            )
+
+            last_price = float(quote_payload.get("price", 0.0))
+            broadcast_payload = {
+                **quote_payload,
+                "open": last_price,
+                "high": last_price,
+                "low": last_price,
+                "close": last_price,
+                "action_signal": agent_action.side.value,
+                "confidence": round(agent_action.confidence, 4),
+                "signal_timestamp": agent_action.generated_at.isoformat(),
+            }
+
+            await websocket.send_json(broadcast_payload)
+            websocket_message_sent(endpoint)
+        except Exception as exc:
+            logger.warning(f"WebSocket send error: {exc}")
             raise
-        else:
-            websocket_closed(endpoint, code="complete")
 
     @app.get("/api/v1/agent", response_model=AgentStatus)
     @limiter.limit("30/minute")  # Rate limit agent status requests

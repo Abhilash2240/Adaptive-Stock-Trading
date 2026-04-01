@@ -12,9 +12,9 @@ from packages.shared.schemas import (
     Position,
     TradeRecord,
 )
-from packages.shared.auth0 import AuthenticatedUser, get_current_user
 
 router = APIRouter(tags=["portfolio"])
+DEFAULT_USER_ID = "anonymous-user"
 
 
 async def _get_or_create_portfolio(
@@ -93,13 +93,13 @@ def _build_positions(
 @router.get("/api/v1/portfolio", response_model=PortfolioStateResponse)
 async def get_portfolio(
     session: AsyncSession = Depends(get_session),
-    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> PortfolioStateResponse:
-    portfolio_row = await _get_or_create_portfolio(session, current_user.id)
+    user_id = DEFAULT_USER_ID
+    portfolio_row = await _get_or_create_portfolio(session, user_id)
 
     stmt = (
         select(AgentActionDB)
-        .where(AgentActionDB.user_id == current_user.id)
+        .where(AgentActionDB.user_id == user_id)
         .order_by(AgentActionDB.executed_at)
     )
     result = await session.execute(stmt)
@@ -115,7 +115,7 @@ async def get_portfolio(
     total_value = float(portfolio_row.cash) + position_value
 
     return PortfolioStateResponse(
-        user_id=current_user.id,
+        user_id=user_id,
         cash=round(float(portfolio_row.cash), 2),
         total_value=round(total_value, 2),
         unrealized_pnl=round(total_pnl, 2),
@@ -128,11 +128,11 @@ async def get_portfolio(
 async def get_trades(
     limit: int = 50,
     session: AsyncSession = Depends(get_session),
-    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> list[TradeRecord]:
+    user_id = DEFAULT_USER_ID
     stmt = (
         select(AgentActionDB)
-        .where(AgentActionDB.user_id == current_user.id)
+        .where(AgentActionDB.user_id == user_id)
         .order_by(AgentActionDB.executed_at.desc())
         .limit(limit)
     )
@@ -142,7 +142,7 @@ async def get_trades(
     return [
         TradeRecord(
             id=int(t.id or 0),
-            user_id=t.user_id or current_user.id,
+            user_id=t.user_id or user_id,
             symbol=t.symbol,
             side=t.side,
             quantity=float(t.quantity or 0.0),
@@ -158,9 +158,9 @@ async def get_trades(
 async def log_trade(
     payload: LogTradePayload,
     session: AsyncSession = Depends(get_session),
-    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> TradeRecord:
-    portfolio_row = await _get_or_create_portfolio(session, current_user.id)
+    user_id = DEFAULT_USER_ID
+    portfolio_row = await _get_or_create_portfolio(session, user_id)
 
     side = payload.side.upper()
     cost = float(payload.quantity) * float(payload.price)
@@ -172,11 +172,11 @@ async def log_trade(
     elif side == "SELL":
         portfolio_row.cash = float(portfolio_row.cash) + cost
 
-    portfolio_row.updated_at = datetime.utcnow()
+    portfolio_row.updated_at = datetime.now(timezone.utc)
     session.add(portfolio_row)
 
     trade = AgentActionDB(
-        user_id=current_user.id,
+        user_id=user_id,
         symbol=payload.symbol.upper(),
         side=side,
         quantity=float(payload.quantity),
@@ -192,7 +192,7 @@ async def log_trade(
 
     return TradeRecord(
         id=int(trade.id or 0),
-        user_id=trade.user_id or current_user.id,
+        user_id=trade.user_id or user_id,
         symbol=trade.symbol,
         side=trade.side,
         quantity=float(trade.quantity or 0.0),
