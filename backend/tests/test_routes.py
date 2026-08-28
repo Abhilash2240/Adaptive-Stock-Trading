@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
 from packages.api import create_app
+from packages.data.provider import get_data_provider
 from packages.db.engine import get_session_ctx
 from packages.db.models import UserDB
 from packages.shared import auth0 as auth0_module
@@ -112,6 +113,21 @@ async def test_portfolio_and_trades(client, auth_headers):
     r = await client.get("/api/v1/portfolio", headers=headers)
     assert r.status_code == 200
     assert float(r.json()["cash"]) < initial_cash
+
+
+async def test_portfolio_unrealized_pnl_uses_latest_quote(client, auth_headers):
+    provider = get_data_provider()
+    provider.set_latest_price("AAPL", 205.50)
+    first = await client.get("/api/v1/portfolio", headers=auth_headers)
+    first_pnl = first.json()["unrealized_pnl"]
+
+    provider.set_latest_price("AAPL", 215.50)
+    second = await client.get("/api/v1/portfolio", headers=auth_headers)
+    second_pnl = second.json()["unrealized_pnl"]
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second_pnl > first_pnl
 
 
 async def test_agent_status(client, auth_headers):

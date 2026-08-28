@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from packages.agent.ddqn import DDQNAgent
-from packages.agent.feature_engine import FeatureEngine
+from packages.agent.environment import TradingEnvironment
 from packages.data.provider import DataProvider
 from packages.shared.metrics import track_inference_latency
 from packages.shared.schemas import (
@@ -26,6 +26,7 @@ class AgentService:
         self,
         provider: DataProvider,
         model_version: str = "ddqn-v1",
+        train_interval: int = 32,
     ) -> None:
         self._provider = provider
         self._model_version = model_version
@@ -35,7 +36,11 @@ class AgentService:
             state_dim=_STATE_DIM,
             action_dim=_ACTION_DIM,
         )
-        self._features = FeatureEngine()
+        self._environment = TradingEnvironment()
+        self._train_interval = max(1, train_interval)
+        self._training_ticks = 0
+        self._training_state: np.ndarray | None = None
+        self._training_action = 0
 
         # Load saved weights if they exist
         if _MODEL_PATH.exists():
@@ -52,7 +57,22 @@ class AgentService:
     # -- Feed quote into feature engine -----------------------------
     def on_quote(self, quote: dict) -> None:
         """Call this from the WebSocket quote handler on every tick."""
-        self._features.update(quote)
+        transition = self._environment.on_quote(quote, self._training_action)
+        if transition is None:
+            return
+
+        next_state, reward, done = transition
+        state = self._training_state if self._training_state is not None else next_state
+        self._agent.remember(state, self._training_action, reward, next_state, done)
+        self._training_ticks += 1
+        if self._training_ticks % self._train_interval == 0:
+            loss = self._agent.train_step()
+            if loss is not None:
+                _MODEL_PATH.parent.mkdir(exist_ok=True)
+                self._agent.save(str(_MODEL_PATH))
+
+        self._training_state = next_state
+        self._training_action = self._agent.act(next_state, training=True)
 
     # -- Request a trading decision ---------------------------------
     def get_action(
@@ -61,7 +81,7 @@ class AgentService:
         portfolio: dict,
     ) -> AgentAction:
         with track_inference_latency():
-            state = self._features.get_state(portfolio)
+            state = self._environment.get_state(portfolio)
 
             if state is None:
                 # Not enough data yet — hold

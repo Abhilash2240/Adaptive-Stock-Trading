@@ -10,7 +10,6 @@ import sys
 
 REQUIRED = [
     "DATABASE_URL",
-    "JWT_SECRET",
     "TWELVEDATA_API_KEY",
 ]
 

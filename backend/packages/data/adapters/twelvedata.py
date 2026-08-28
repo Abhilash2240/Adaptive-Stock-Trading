@@ -104,6 +104,7 @@ class TwelveDataProvider(BaseAsyncProvider):
                 try:
                     quotes = await self._fetch_prices(batch)
                     for q in quotes:
+                        self.set_latest_price(q.symbol, q.price)
                         await self._queue.put(q)
                 except httpx.HTTPStatusError as exc:
                     status_code = exc.response.status_code

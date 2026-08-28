@@ -1,6 +1,5 @@
 from functools import lru_cache
 from pathlib import Path
-import secrets as _secrets
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -36,9 +35,9 @@ class Settings(BaseSettings):
     pubsub_topic: str | None = None
     model_bucket: str | None = None
     agent_model_name: str = "ppo-default"
+    agent_train_interval: int = 32
     
     # Security Configuration
-    jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 30
     rate_limit_enabled: bool = True
@@ -59,29 +58,6 @@ class Settings(BaseSettings):
         if self.data_provider == "twelvedata" and not self.twelvedata_api_key:
             self.data_provider = "mock"
         return self
-
-    @model_validator(mode="after")
-    def _check_jwt_secret(self) -> "Settings":
-        if not self.jwt_secret:
-            if self.environment == "production":
-                raise ValueError(
-                    "JWT_SECRET must be set in production. "
-                    "Generate one with: "
-                    "python -c \"import secrets; print(secrets.token_hex(32))\""
-                )
-            # Dev only - generate ephemeral secret with warning.
-            import warnings
-
-            self.jwt_secret = _secrets.token_hex(32)
-            warnings.warn(
-                "JWT_SECRET not set - using ephemeral secret. "
-                "All sessions will invalidate on restart. "
-                "Set JWT_SECRET in .env for persistent sessions.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-        return self
-
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

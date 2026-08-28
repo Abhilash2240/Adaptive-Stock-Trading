@@ -21,7 +21,12 @@ from packages.data.provider import DataProvider, get_data_provider
 from packages.db.engine import get_session_ctx
 from packages.db.repositories import UserSettingsRepository
 from packages.shared.config import Settings, get_settings
-from packages.shared.auth0 import AuthenticatedUser, get_current_user, verify_auth0_token
+from packages.shared.auth0 import (
+    AuthenticatedUser,
+    get_current_user,
+    require_admin,
+    verify_auth0_token,
+)
 from packages.shared.metrics import websocket_closed, websocket_connected, websocket_message_sent
 from packages.shared.schemas import (
     AgentAction,
@@ -392,7 +397,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/v1/rl/train", response_model=dict)
     async def trigger_training(
-        current_user: AuthenticatedUser = Depends(get_current_user),
+        current_user: AuthenticatedUser = Depends(require_admin),
         agent: AgentService = Depends(get_agent_service),
     ) -> dict:
         loss = agent._agent.train_step()
@@ -413,7 +418,11 @@ def get_agent_service() -> AgentService:
     if _agent_service is None:
         settings = get_settings()
         provider = get_data_provider()
-        _agent_service = AgentService(provider, model_version=settings.agent_model_name)
+        _agent_service = AgentService(
+            provider,
+            model_version=settings.agent_model_name,
+            train_interval=settings.agent_train_interval,
+        )
     return _agent_service
 
 

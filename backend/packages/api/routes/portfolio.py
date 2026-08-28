@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.db.engine import get_session
 from packages.db.models import AgentActionDB, PortfolioStateDB
+from packages.data.provider import get_data_provider
 from packages.shared.schemas import (
     LogTradePayload,
     PortfolioStateResponse,
@@ -109,7 +110,13 @@ async def get_portfolio(
     for t in trades:
         last_prices[t.symbol] = float(t.price or 0.0)
 
-    positions, total_pnl = _build_positions(trades, last_prices)
+    provider = get_data_provider()
+    live_prices = {
+        symbol: price
+        for symbol in last_prices
+        if (price := provider.get_latest_price(symbol)) is not None and price > 0
+    }
+    positions, total_pnl = _build_positions(trades, {**last_prices, **live_prices})
 
     position_value = sum(p.quantity * p.current_price for p in positions)
     total_value = float(portfolio_row.cash) + position_value

@@ -1,5 +1,5 @@
 # Production requirements — slim version for Render deployment
-# Excludes torch, firebase, GCP, polygon, redis (unused at runtime)
+# Excludes firebase, GCP, polygon, redis (unused at runtime)
 
 fastapi==0.121.1
 uvicorn[standard]==0.34.3
@@ -13,6 +13,8 @@ httpx==0.27.2
 websockets==15.0.1
 python-dotenv==1.0.1
 numpy==2.1.3
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.8.0+cpu
 prometheus-fastapi-instrumentator==6.1.0
 prometheus-client==0.20.0
 

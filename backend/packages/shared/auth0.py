@@ -17,6 +17,11 @@ class AuthenticatedUser:
     id: str
     sub: str
     email: str | None = None
+    roles: tuple[str, ...] = ()
+
+    @property
+    def is_admin(self) -> bool:
+        return "admin" in self.roles
 
 
 security_scheme = HTTPBearer(auto_error=True)
@@ -88,8 +93,28 @@ async def get_current_user(
             detail="Invalid token payload",
         )
 
+    raw_roles = payload.get("https://yourapp/roles", [])
+    if isinstance(raw_roles, str):
+        roles = (raw_roles,)
+    elif isinstance(raw_roles, list):
+        roles = tuple(str(role) for role in raw_roles)
+    else:
+        roles = ()
+
     return AuthenticatedUser(
         id=sub,
         sub=sub,
         email=str(payload.get("email") or ""),
+        roles=roles,
     )
+
+
+async def require_admin(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUser:
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator role required",
+        )
+    return current_user

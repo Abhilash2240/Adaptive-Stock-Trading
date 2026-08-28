@@ -58,6 +58,7 @@ class MockDataProvider(BaseAsyncProvider):
                 step = random.uniform(-1.2, 1.2)
                 next_price = max(1.0, last + step)
                 self._prices[symbol] = next_price
+                self.set_latest_price(symbol, next_price)
                 await self._queue.put(
                     Quote(symbol=symbol, price=round(next_price, 2), volume=random.randint(1000, 50000), timestamp=now)
                 )

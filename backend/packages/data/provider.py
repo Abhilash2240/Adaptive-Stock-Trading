@@ -17,6 +17,8 @@ class DataProvider(Protocol):
 
     async def subscribe(self, symbol: str, channel: str) -> None: ...
 
+    def get_latest_price(self, symbol: str) -> float | None: ...
+
     def stream_quotes(self) -> AsyncIterator[Quote]: ...
 
 
@@ -25,6 +27,13 @@ class BaseAsyncProvider(ABC):
 
     def __init__(self) -> None:
         self._started = asyncio.Event()
+        self._latest_prices: dict[str, float] = {}
+
+    def get_latest_price(self, symbol: str) -> float | None:
+        return self._latest_prices.get(symbol.upper())
+
+    def set_latest_price(self, symbol: str, price: float) -> None:
+        self._latest_prices[symbol.upper()] = float(price)
 
     async def start(self) -> None:
         self._started.set()
