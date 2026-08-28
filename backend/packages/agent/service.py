@@ -19,6 +19,7 @@ from packages.shared.schemas import (
 _MODEL_PATH = Path("models/ddqn_weights.pt")
 _STATE_DIM = 14
 _ACTION_DIM = 3  # 0=HOLD 1=BUY 2=SELL
+_HOLD_ACTION = TradingEnvironment.HOLD
 
 
 class AgentService:
@@ -36,11 +37,11 @@ class AgentService:
             state_dim=_STATE_DIM,
             action_dim=_ACTION_DIM,
         )
-        self._environment = TradingEnvironment()
+        self._environments: dict[str, TradingEnvironment] = {}
         self._train_interval = max(1, train_interval)
-        self._training_ticks = 0
-        self._training_state: np.ndarray | None = None
-        self._training_action = 0
+        self._training_ticks: dict[str, int] = {}
+        self._training_state: dict[str, np.ndarray | None] = {}
+        self._training_action: dict[str, int] = {}
 
         # Load saved weights if they exist
         if _MODEL_PATH.exists():
@@ -55,24 +56,40 @@ class AgentService:
         )
 
     # -- Feed quote into feature engine -----------------------------
+    def _get_environment(self, symbol: str) -> TradingEnvironment:
+        normalized_symbol = symbol.strip().upper()
+        if normalized_symbol not in self._environments:
+            self._environments[normalized_symbol] = TradingEnvironment()
+            self._training_ticks[normalized_symbol] = 0
+            self._training_state[normalized_symbol] = None
+            self._training_action[normalized_symbol] = _HOLD_ACTION
+        return self._environments[normalized_symbol]
+
     def on_quote(self, quote: dict) -> None:
         """Call this from the WebSocket quote handler on every tick."""
-        transition = self._environment.on_quote(quote, self._training_action)
+        symbol = str(quote.get("symbol") or "").strip().upper()
+        if not symbol:
+            return
+
+        environment = self._get_environment(symbol)
+        transition = environment.on_quote(quote, self._training_action[symbol])
         if transition is None:
             return
 
         next_state, reward, done = transition
-        state = self._training_state if self._training_state is not None else next_state
-        self._agent.remember(state, self._training_action, reward, next_state, done)
-        self._training_ticks += 1
-        if self._training_ticks % self._train_interval == 0:
+        previous_state = self._training_state[symbol]
+        state = previous_state if previous_state is not None else next_state
+        action = self._training_action[symbol]
+        self._agent.remember(state, action, reward, next_state, done)
+        self._training_ticks[symbol] += 1
+        if self._training_ticks[symbol] % self._train_interval == 0:
             loss = self._agent.train_step()
             if loss is not None:
                 _MODEL_PATH.parent.mkdir(exist_ok=True)
                 self._agent.save(str(_MODEL_PATH))
 
-        self._training_state = next_state
-        self._training_action = self._agent.act(next_state, training=True)
+        self._training_state[symbol] = next_state
+        self._training_action[symbol] = self._agent.act(next_state, training=True)
 
     # -- Request a trading decision ---------------------------------
     def get_action(
@@ -81,7 +98,7 @@ class AgentService:
         portfolio: dict,
     ) -> AgentAction:
         with track_inference_latency():
-            state = self._environment.get_state(portfolio)
+            state = self._get_environment(symbol).get_state(portfolio)
 
             if state is None:
                 # Not enough data yet — hold

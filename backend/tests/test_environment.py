@@ -2,6 +2,9 @@ import numpy as np
 
 from packages.agent.ddqn import DDQNAgent
 from packages.agent.environment import TradingEnvironment
+from packages.agent.service import AgentService
+from packages.data.adapters.mock import MockDataProvider
+from packages.shared.schemas import OrderSide
 
 
 def quote(price: float) -> dict:
@@ -48,3 +51,28 @@ def test_remember_populates_replay_buffer():
     assert replay_reward == reward
     assert np.array_equal(replay_next_state, next_state)
     assert replay_done is done
+
+
+def test_agent_service_keeps_interleaved_symbol_histories_separate():
+    service = AgentService(MockDataProvider(), train_interval=10_000)
+
+    for index in range(30):
+        service.on_quote(quote(100.0 + index) | {"symbol": "AAPL"})
+        service.on_quote(quote(300.0 + index) | {"symbol": "MSFT"})
+
+    aapl_environment = service._environments["AAPL"]
+    msft_environment = service._environments["MSFT"]
+    aapl_prices = set(aapl_environment.features._closes)
+    msft_prices = set(msft_environment.features._closes)
+    portfolio = {"cash": 10_000, "total_value": 10_000}
+
+    aapl_action = service.get_action("AAPL", portfolio)
+    msft_action = service.get_action("MSFT", portfolio)
+
+    assert aapl_prices.isdisjoint(msft_prices)
+    assert len(aapl_environment.features._closes) == 30
+    assert len(msft_environment.features._closes) == 30
+    assert aapl_action.side in (OrderSide.HOLD, OrderSide.BUY, OrderSide.SELL)
+    assert msft_action.side in (OrderSide.HOLD, OrderSide.BUY, OrderSide.SELL)
+    assert aapl_action.confidence > 0
+    assert msft_action.confidence > 0
