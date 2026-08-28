@@ -1,7 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 import logging
-import os
 
 from fastapi import Body, Depends, FastAPI, Query, Request, Response, WebSocket
 from fastapi import WebSocketDisconnect, HTTPException, status
@@ -115,12 +114,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ],
     )
 
-    _raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173")
-    _origins = [o.strip() for o in _raw.split(",") if o.strip()]
+    # Parse comma-separated origins from Settings
+    cors_origins = [o.strip() for o in resolved_settings.allowed_origins.split(",") if o.strip()]
     
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=_origins,
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
