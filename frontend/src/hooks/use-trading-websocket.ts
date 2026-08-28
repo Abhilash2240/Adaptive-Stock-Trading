@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
+import { resolveWebSocketBase } from "@/hooks/use-api";
 
 export interface LiveTick {
   symbol: string;
@@ -50,13 +51,8 @@ export function useTradingWebSocket({
       return;
     }
 
-    const wsBase =
-      import.meta.env.VITE_WS_URL ??
-      `ws://${window.location.hostname}:8001`;
-
-    const endpoint = wsBase.endsWith("/ws/quotes")
-      ? wsBase
-      : `${wsBase}/ws/quotes`;
+    const wsBase = resolveWebSocketBase();
+    const endpoint = `${wsBase}/ws/quotes`;
 
     const ws = new WebSocket(
       `${endpoint}?token=${encodeURIComponent(token)}`

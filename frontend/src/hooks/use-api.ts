@@ -167,6 +167,19 @@ export interface AgentRationaleResponse {
 
 export const apiBaseUrl = API_BASE;
 
+export function resolveWebSocketBase(): string {
+	const envUrl = (import.meta.env as any).VITE_WS_URL as string | undefined;
+	if (envUrl) {
+		// Strip /ws/quotes path if present in env URL
+		return envUrl.replace(/\/ws\/quotes$/, "");
+	}
+	if (typeof window !== "undefined") {
+		const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+		return `${protocol}//${window.location.host}`;
+	}
+	return "ws://localhost:8001";
+}
+
 export function resolveWebSocketUrl(): string {
 	const envUrl = (import.meta.env as any).VITE_WS_URL as string | undefined;
 	if (envUrl) {
