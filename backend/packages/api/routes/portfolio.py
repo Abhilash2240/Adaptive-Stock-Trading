@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.db.engine import get_session
@@ -91,6 +91,47 @@ def _build_positions(
     return positions, total_pnl
 
 
+async def get_agent_portfolio(
+    session: AsyncSession,
+    user_id: str,
+) -> dict[str, float | int]:
+    """Build the compact, user-specific portfolio input expected by the agent."""
+    portfolio_row = await _get_or_create_portfolio(session, user_id)
+
+    stmt = (
+        select(AgentActionDB)
+        .where(AgentActionDB.user_id == user_id)
+        .order_by(AgentActionDB.executed_at)
+    )
+    result = await session.execute(stmt)
+    trades = list(result.scalars().all())
+
+    last_prices = {t.symbol: float(t.price or 0.0) for t in trades}
+    provider = get_data_provider()
+    live_prices = {
+        symbol: price
+        for symbol in last_prices
+        if (price := provider.get_latest_price(symbol)) is not None and price > 0
+    }
+    positions, total_pnl = _build_positions(trades, {**last_prices, **live_prices})
+    position_value = sum(position.quantity * position.current_price for position in positions)
+    cash = float(portfolio_row.cash)
+    total_value = cash + position_value
+    invested_value = sum(position.quantity * position.avg_price for position in positions)
+    today = datetime.now(timezone.utc).date()
+    trade_count_today = sum(
+        1 for trade in trades if trade.executed_at and trade.executed_at.date() == today
+    )
+
+    return {
+        "position_flag": int(bool(positions)),
+        "unrealized_pnl_pct": total_pnl / invested_value if invested_value > 0 else 0.0,
+        "cash": cash,
+        "total_value": total_value,
+        "trade_count_today": trade_count_today,
+    }
+
+
 @router.get("/api/v1/portfolio", response_model=PortfolioStateResponse)
 async def get_portfolio(
     session: AsyncSession = Depends(get_session),
@@ -134,14 +175,30 @@ async def get_portfolio(
 @router.get("/api/v1/trades", response_model=list[TradeRecord])
 async def get_trades(
     limit: int = 50,
+    offset: int = 0,
+    symbol: str | None = None,
+    side: str | None = None,
+    from_date: datetime | None = None,
+    to_date: datetime | None = None,
     session: AsyncSession = Depends(get_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> list[TradeRecord]:
+    filters = [AgentActionDB.user_id == current_user.id]
+    if symbol:
+        filters.append(AgentActionDB.symbol == symbol.strip().upper())
+    if side:
+        filters.append(func.lower(AgentActionDB.side) == side.strip().lower())
+    if from_date:
+        filters.append(AgentActionDB.executed_at >= from_date)
+    if to_date:
+        filters.append(AgentActionDB.executed_at <= to_date)
+
     stmt = (
         select(AgentActionDB)
-        .where(AgentActionDB.user_id == current_user.id)
+        .where(*filters)
         .order_by(AgentActionDB.executed_at.desc())
-        .limit(limit)
+        .offset(max(offset, 0))
+        .limit(max(limit, 0))
     )
     result = await session.execute(stmt)
     trades = list(result.scalars().all())
@@ -177,6 +234,20 @@ async def log_trade(
             raise HTTPException(status_code=400, detail="Insufficient cash")
         portfolio_row.cash = float(portfolio_row.cash) - cost
     elif side == "SELL":
+        stmt = (
+            select(AgentActionDB)
+            .where(AgentActionDB.user_id == current_user.id)
+            .order_by(AgentActionDB.executed_at)
+        )
+        result = await session.execute(stmt)
+        trades = list(result.scalars().all())
+        positions, _ = _build_positions(trades, {})
+        held_quantity = next(
+            (position.quantity for position in positions if position.symbol == payload.symbol.upper()),
+            0.0,
+        )
+        if float(payload.quantity) > held_quantity:
+            raise HTTPException(status_code=400, detail="Insufficient shares to sell")
         portfolio_row.cash = float(portfolio_row.cash) + cost
 
     portfolio_row.updated_at = datetime.utcnow()

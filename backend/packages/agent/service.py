@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Lock
 
 import numpy as np
 
@@ -42,6 +44,7 @@ class AgentService:
         self._training_ticks: dict[str, int] = {}
         self._training_state: dict[str, np.ndarray | None] = {}
         self._training_action: dict[str, int] = {}
+        self._agent_lock = Lock()
 
         # Load saved weights if they exist
         if _MODEL_PATH.exists():
@@ -80,16 +83,29 @@ class AgentService:
         previous_state = self._training_state[symbol]
         state = previous_state if previous_state is not None else next_state
         action = self._training_action[symbol]
-        self._agent.remember(state, action, reward, next_state, done)
+        with self._agent_lock:
+            self._agent.remember(state, action, reward, next_state, done)
         self._training_ticks[symbol] += 1
         if self._training_ticks[symbol] % self._train_interval == 0:
+            try:
+                asyncio.get_running_loop().create_task(
+                    asyncio.to_thread(self._train_and_save)
+                )
+            except RuntimeError:
+                # Keep synchronous callers usable outside an event loop.
+                self._train_and_save()
+
+        self._training_state[symbol] = next_state
+        with self._agent_lock:
+            self._training_action[symbol] = self._agent.act(next_state, training=True)
+
+    def _train_and_save(self) -> None:
+        """Train and persist weights without concurrent agent access."""
+        with self._agent_lock:
             loss = self._agent.train_step()
             if loss is not None:
                 _MODEL_PATH.parent.mkdir(exist_ok=True)
                 self._agent.save(str(_MODEL_PATH))
-
-        self._training_state[symbol] = next_state
-        self._training_action[symbol] = self._agent.act(next_state, training=True)
 
     # -- Request a trading decision ---------------------------------
     def get_action(
@@ -109,9 +125,10 @@ class AgentService:
                     generated_at=datetime.now(timezone.utc),
                 )
 
-            action_idx = self._agent.act(state, training=False)
-            q_vals = self._agent.q_values(state)
-            conf = self._agent.confidence(q_vals)
+            with self._agent_lock:
+                action_idx = self._agent.act(state, training=False)
+                q_vals = self._agent.q_values(state)
+                conf = self._agent.confidence(q_vals)
 
             side_map = {0: OrderSide.HOLD, 1: OrderSide.BUY, 2: OrderSide.SELL}
             self._last_action = AgentAction(

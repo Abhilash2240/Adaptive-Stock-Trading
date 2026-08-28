@@ -44,7 +44,7 @@ from packages.shared.security import (
     limiter,
 )
 from .routes import health
-from .routes.portfolio import router as portfolio_router
+from .routes.portfolio import get_agent_portfolio, router as portfolio_router
 
 # Security setup
 security_scheme = HTTPBearer()
@@ -186,22 +186,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         }
 
-    @app.get("/api/v1/health/live")
-    async def api_v1_health_live() -> dict[str, str]:
-        return {"status": "ok"}
-
-    @app.get("/api/v1/health/ready")
-    async def api_v1_health_ready(
-        provider: DataProvider = Depends(get_data_provider),
-    ) -> dict[str, object]:
-        return {
-            "status": "ok",
-            "summary": {
-                "environment": resolved_settings.environment,
-                "provider": provider.name,
-            },
-        }
-
     # ── Stock quote REST endpoint (powered by Twelve Data) ────────
     @app.get("/api/v1/quotes")
     @limiter.limit("30/minute")
@@ -336,21 +320,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         websocket_connected(endpoint)
         agent_service = get_agent_service()
         try:
+            async with get_session_ctx() as session:
+                user_portfolio = await get_agent_portfolio(session, user_id)
+
             async for quote in provider.stream_quotes():
                 quote_payload = quote.model_dump(mode="json")
                 agent_service.on_quote(quote_payload)
 
-                _default_portfolio = {
-                    "position_flag": 0,
-                    "unrealized_pnl_pct": 0.0,
-                    "cash": 10_000.0,
-                    "total_value": 10_000.0,
-                    "trade_count_today": 0,
-                }
-
                 agent_action = agent_service.get_action(
                     symbol=quote_payload["symbol"],
-                    portfolio=_default_portfolio,
+                    portfolio=user_portfolio,
                 )
 
                 last_price = float(quote_payload.get("price", 0.0))

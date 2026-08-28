@@ -130,11 +130,13 @@ export interface CreateTradePayload {
 	confidence: number;
 }
 
+export type TradeAction = "BUY" | "SELL" | "HOLD" | "ALL";
+
 export interface TradeFilters {
 	symbol?: string;
-	action?: "BUY" | "SELL" | "HOLD" | "ALL";
-	from?: string;
-	to?: string;
+	action?: TradeAction;
+	from?: string; // ISO 8601 date string
+	to?: string; // ISO 8601 date string
 }
 
 export interface TrainingResult {
@@ -290,18 +292,16 @@ export function useTradeHistory(page: number, filters: TradeFilters = {}) {
 	const limit = 20;
 	const offset = Math.max(0, (page - 1) * limit);
 	const params = new URLSearchParams();
-	params.set("limit", String(Math.max(limit, offset + limit)));
+	params.set("limit", String(limit));
+	params.set("offset", String(offset));
 	if (filters.symbol && filters.symbol !== "ALL") params.set("symbol", filters.symbol);
-	if (filters.action && filters.action !== "ALL") params.set("action", filters.action);
-	if (filters.from) params.set("from", filters.from);
-	if (filters.to) params.set("to", filters.to);
+	if (filters.action && filters.action !== "ALL") params.set("side", filters.action);
+	if (filters.from) params.set("from_date", new Date(filters.from).toISOString());
+	if (filters.to) params.set("to_date", new Date(filters.to).toISOString());
 
 	return useQuery<TradeRecord[]>({
 		queryKey: ["trade-history", page, filters],
-		queryFn: async () => {
-			const all = await requestJson<TradeRecord[]>(`/api/v1/trades?${params.toString()}`);
-			return all.slice(offset, offset + limit);
-		},
+		queryFn: () => requestJson<TradeRecord[]>(`/api/v1/trades?${params.toString()}`),
 		staleTime: 2000,
 		refetchInterval: 4000,
 	});

@@ -5,7 +5,7 @@ from packages.shared.config import Settings, get_settings
 from packages.agent.service import AgentService
 from packages.data.provider import DataProvider, get_data_provider
 
-router = APIRouter(prefix="/health", tags=["health"])
+router = APIRouter(prefix="/api/v1/health", tags=["health"])
 
 
 @router.get("/live")

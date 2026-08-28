@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "npm run dev:frontend",
     "dev:frontend": "vite dev",
-    "dev:backend": ".venv\\Scripts\\python backend/run_server.py",
+    "dev:backend": "node scripts/run-backend.mjs",
     "dev:full": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "build": "vite build",
     "build:analyze": "cross-env ANALYZE=true vite build --emptyOutDir false",

@@ -25,7 +25,7 @@ _BASE_URL = "https://api.twelvedata.com"
 
 
 class TwelveDataProvider(BaseAsyncProvider):
-    """Streams quotes by polling the Twelve Data /price endpoint."""
+    """Streams quotes by polling the Twelve Data /quote endpoint."""
 
     name = "twelvedata"
 
@@ -99,7 +99,7 @@ class TwelveDataProvider(BaseAsyncProvider):
                     await asyncio.sleep(self._interval)
                     continue
 
-                # Twelve Data allows a comma-separated batch in /price
+                # /quote provides volume, which feeds the agent's volume_ratio feature.
                 batch = ",".join(sorted(self._symbols))
                 try:
                     quotes = await self._fetch_prices(batch)
@@ -126,43 +126,28 @@ class TwelveDataProvider(BaseAsyncProvider):
 
     async def _fetch_prices(self, symbols_csv: str) -> list[Quote]:
         """
-        GET /price?symbol=AAPL,MSFT&apikey=xxx
-        Single symbol → {"price":"150.42"}
-        Multiple symbols → {"AAPL":{"price":"150.42"}, "MSFT":{"price":"310.11"}}
-        """
-        client = self._ensure_client()
-        url = f"{_BASE_URL}/price"
-        resp = await client.get(url, params={"symbol": symbols_csv, "apikey": self._api_key})
-        resp.raise_for_status()
-        data = resp.json()
+        GET /quote?symbol=AAPL&apikey=xxx for each symbol.
 
+        The /price endpoint is batchable but does not return volume. Keep the
+        polling path on /quote so the streamed Quote retains volume for the
+        agent's volume_ratio feature.
+        """
         results: list[Quote] = []
         now = datetime.now(timezone.utc)
 
-        if "price" in data:
-            # Single symbol response
-            symbol = symbols_csv.split(",")[0]
+        for symbol in symbols_csv.split(","):
+            data = await self.fetch_quote_detail(symbol)
+            price = data.get("close") or data.get("price")
+            if price is None:
+                continue
             results.append(
                 Quote(
-                    symbol=symbol,
-                    price=float(data["price"]),
-                    volume=0,
+                    symbol=str(data.get("symbol") or symbol).upper(),
+                    price=float(price),
+                    volume=int(float(data.get("volume") or 0)),
                     timestamp=now,
                 )
             )
-        else:
-            # Multi-symbol response
-            for sym, payload in data.items():
-                if not isinstance(payload, dict) or "price" not in payload:
-                    continue
-                results.append(
-                    Quote(
-                        symbol=sym.upper(),
-                        price=float(payload["price"]),
-                        volume=0,
-                        timestamp=now,
-                    )
-                )
 
         return results
 

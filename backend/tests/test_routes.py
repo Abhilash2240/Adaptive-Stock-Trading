@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import pytest
 import pytest_asyncio
 from fastapi import HTTPException
@@ -6,7 +8,7 @@ from httpx import ASGITransport, AsyncClient
 from packages.api import create_app
 from packages.data.provider import get_data_provider
 from packages.db.engine import get_session_ctx
-from packages.db.models import UserDB
+from packages.db.models import AgentActionDB, UserDB
 from packages.shared import auth0 as auth0_module
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -49,12 +51,12 @@ async def auth_headers():
 
 
 async def test_health_live(client):
-    r = await client.get("/health/live")
+    r = await client.get("/api/v1/health/live")
     assert r.status_code == 200
 
 
 async def test_health_ready(client):
-    r = await client.get("/health/ready")
+    r = await client.get("/api/v1/health/ready")
     assert r.status_code == 200
 
 
@@ -113,6 +115,96 @@ async def test_portfolio_and_trades(client, auth_headers):
     r = await client.get("/api/v1/portfolio", headers=headers)
     assert r.status_code == 200
     assert float(r.json()["cash"]) < initial_cash
+
+
+async def test_trade_history_filters_by_symbol_and_side(client, auth_headers):
+    headers = auth_headers
+
+    async with get_session_ctx() as session:
+        now = datetime.now(timezone.utc)
+        session.add_all(
+            [
+                AgentActionDB(
+                    id=900001,
+                    user_id="test-user",
+                    symbol="MSFT",
+                    side="BUY",
+                    quantity=1,
+                    price=100,
+                    confidence=0.5,
+                    executed_at=now,
+                    timestamp=now,
+                ),
+                AgentActionDB(
+                    id=900002,
+                    user_id="test-user",
+                    symbol="TSLA",
+                    side="SELL",
+                    quantity=1,
+                    price=100,
+                    confidence=0.5,
+                    executed_at=now,
+                    timestamp=now,
+                ),
+            ]
+        )
+        await session.commit()
+
+    response = await client.get(
+        "/api/v1/trades?symbol=msft&side=buy",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert [trade["symbol"] for trade in response.json()] == ["MSFT"]
+    assert [trade["side"] for trade in response.json()] == ["BUY"]
+
+
+async def test_sell_rejects_oversell_and_allows_owned_quantity(client, auth_headers):
+    async with get_session_ctx() as session:
+        now = datetime.now(timezone.utc)
+        session.add(
+            AgentActionDB(
+                id=900003,
+                user_id="test-user",
+                symbol="NVDA",
+                side="BUY",
+                quantity=2,
+                price=100,
+                confidence=0.5,
+                executed_at=now,
+                timestamp=now,
+            )
+        )
+        await session.commit()
+
+    oversell = await client.post(
+        "/api/v1/trades",
+        headers=auth_headers,
+        json={
+            "symbol": "NVDA",
+            "side": "SELL",
+            "quantity": 3,
+            "price": 110,
+            "confidence": 0.5,
+        },
+    )
+    assert oversell.status_code == 400
+    assert oversell.json()["detail"] == "Insufficient shares to sell"
+
+    valid_sell = await client.post(
+        "/api/v1/trades",
+        headers=auth_headers,
+        json={
+            "symbol": "NVDA",
+            "side": "SELL",
+            "quantity": 2,
+            "price": 110,
+            "confidence": 0.5,
+        },
+    )
+    assert valid_sell.status_code == 200
+    assert valid_sell.json()["side"] == "SELL"
 
 
 async def test_portfolio_unrealized_pnl_uses_latest_quote(client, auth_headers):

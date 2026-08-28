@@ -48,7 +48,19 @@ local `/login` or `/register` routes.
    ```dotenv
    AUTH0_DOMAIN=your-tenant.us.auth0.com
    AUTH0_AUDIENCE=https://your-api-identifier
+   AUTH0_ROLES_CLAIM=https://yourapp/roles
    ```
+6. In the Auth0 tenant, configure a Post-Login Action to write authorization
+   roles to the same custom claim namespace:
+   ```javascript
+   module.exports = async (event, api) => {
+     const roles = event.authorization?.roles || [];
+     api.idToken.setCustomClaim('https://yourapp/roles', roles);
+   };
+   ```
+   Set `AUTH0_ROLES_CLAIM` to the exact namespace used by that Action. The
+   backend validates Auth0 RS256 tokens through the tenant JWKS endpoint; no
+   locally generated signing secret is required.
 
 On first sign-in, Auth0 handles account creation and login. Paper trading is
 enabled by default; no real money is used.
