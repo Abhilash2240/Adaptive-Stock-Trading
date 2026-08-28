@@ -91,11 +91,11 @@ def _build_positions(
     return positions, total_pnl
 
 
-async def get_agent_portfolio(
+async def _load_portfolio_snapshot(
     session: AsyncSession,
     user_id: str,
-) -> dict[str, float | int]:
-    """Build the compact, user-specific portfolio input expected by the agent."""
+) -> tuple[PortfolioStateDB, list[Position], float, int]:
+    """Load the shared portfolio data used by REST and agent responses."""
     portfolio_row = await _get_or_create_portfolio(session, user_id)
 
     stmt = (
@@ -114,15 +114,26 @@ async def get_agent_portfolio(
         if (price := provider.get_latest_price(symbol)) is not None and price > 0
     }
     positions, total_pnl = _build_positions(trades, {**last_prices, **live_prices})
-    position_value = sum(position.quantity * position.current_price for position in positions)
-    cash = float(portfolio_row.cash)
-    total_value = cash + position_value
-    invested_value = sum(position.quantity * position.avg_price for position in positions)
     today = datetime.now(timezone.utc).date()
     trade_count_today = sum(
         1 for trade in trades if trade.executed_at and trade.executed_at.date() == today
     )
+    return portfolio_row, positions, total_pnl, trade_count_today
 
+
+async def get_agent_portfolio(
+    session: AsyncSession,
+    user_id: str,
+) -> dict[str, float | int]:
+    """Build the compact, user-specific portfolio input expected by the agent."""
+    portfolio_row, positions, total_pnl, trade_count_today = await _load_portfolio_snapshot(
+        session,
+        user_id,
+    )
+    position_value = sum(position.quantity * position.current_price for position in positions)
+    cash = float(portfolio_row.cash)
+    total_value = cash + position_value
+    invested_value = sum(position.quantity * position.avg_price for position in positions)
     return {
         "position_flag": int(bool(positions)),
         "unrealized_pnl_pct": total_pnl / invested_value if invested_value > 0 else 0.0,
@@ -137,27 +148,10 @@ async def get_portfolio(
     session: AsyncSession = Depends(get_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> PortfolioStateResponse:
-    portfolio_row = await _get_or_create_portfolio(session, current_user.id)
-
-    stmt = (
-        select(AgentActionDB)
-        .where(AgentActionDB.user_id == current_user.id)
-        .order_by(AgentActionDB.executed_at)
+    portfolio_row, positions, total_pnl, _ = await _load_portfolio_snapshot(
+        session,
+        current_user.id,
     )
-    result = await session.execute(stmt)
-    trades = list(result.scalars().all())
-
-    last_prices: dict[str, float] = {}
-    for t in trades:
-        last_prices[t.symbol] = float(t.price or 0.0)
-
-    provider = get_data_provider()
-    live_prices = {
-        symbol: price
-        for symbol in last_prices
-        if (price := provider.get_latest_price(symbol)) is not None and price > 0
-    }
-    positions, total_pnl = _build_positions(trades, {**last_prices, **live_prices})
 
     position_value = sum(p.quantity * p.current_price for p in positions)
     total_value = float(portfolio_row.cash) + position_value

@@ -4,11 +4,12 @@ import pytest
 import pytest_asyncio
 from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
+from starlette.testclient import TestClient
 
 from packages.api import create_app
 from packages.data.provider import get_data_provider
 from packages.db.engine import get_session_ctx
-from packages.db.models import AgentActionDB, UserDB
+from packages.db.models import AgentActionDB, PortfolioStateDB, UserDB
 from packages.shared import auth0 as auth0_module
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -231,3 +232,49 @@ async def test_agent_status(client, auth_headers):
     assert "epsilon" in data
     assert "buffer_size" in data
     assert "step_count" in data
+
+
+async def test_websocket_broadcast_uses_user_portfolio(client, auth_headers, monkeypatch):
+    import importlib
+
+    api_module = importlib.import_module("packages.api.app")
+    monkeypatch.setattr(
+        api_module,
+        "verify_auth0_token",
+        lambda token, settings: {"sub": "test-user", "email": "test@example.com"},
+    )
+
+    async with get_session_ctx() as session:
+        portfolio = await session.get(PortfolioStateDB, 1)
+        if portfolio is None:
+            portfolio = PortfolioStateDB(id=1, user_id="test-user", cash=9_800.0)
+            session.add(portfolio)
+        else:
+            portfolio.user_id = "test-user"
+            portfolio.cash = 9_800.0
+        session.add(
+            AgentActionDB(
+                id=900004,
+                user_id="test-user",
+                symbol="AAPL",
+                side="BUY",
+                quantity=2,
+                price=100,
+                confidence=0.5,
+                executed_at=datetime.now(timezone.utc),
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        await session.commit()
+
+    with TestClient(create_app(), base_url="http://localhost") as test_client:
+        with test_client.websocket_connect(
+            "/ws/quotes?token=test-token",
+            headers={"host": "localhost"},
+        ) as websocket:
+            message = websocket.receive_json()
+
+    portfolio_payload = message["portfolio"]
+    assert portfolio_payload["position_flag"] == 1
+    assert portfolio_payload["cash"] == 9_800.0
+    assert portfolio_payload["trade_count_today"] >= 1

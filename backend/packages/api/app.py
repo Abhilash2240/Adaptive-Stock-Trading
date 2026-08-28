@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 import logging
+import time
 
 from fastapi import Body, Depends, FastAPI, Query, Request, Response, WebSocket
 from fastapi import WebSocketDisconnect, HTTPException, status
@@ -319,13 +320,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await websocket.accept()
         websocket_connected(endpoint)
         agent_service = get_agent_service()
+        user_portfolio: dict[str, float | int] | None = None
+        portfolio_refreshed_at = 0.0
         try:
-            async with get_session_ctx() as session:
-                user_portfolio = await get_agent_portfolio(session, user_id)
-
             async for quote in provider.stream_quotes():
                 quote_payload = quote.model_dump(mode="json")
                 agent_service.on_quote(quote_payload)
+
+                now = time.monotonic()
+                if user_portfolio is None or now - portfolio_refreshed_at >= 4.0:
+                    async with get_session_ctx() as session:
+                        user_portfolio = await get_agent_portfolio(session, user_id)
+                    portfolio_refreshed_at = now
 
                 agent_action = agent_service.get_action(
                     symbol=quote_payload["symbol"],
@@ -342,6 +348,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "action_signal": agent_action.side.value,
                     "confidence": round(agent_action.confidence, 4),
                     "signal_timestamp": agent_action.generated_at.isoformat(),
+                    "portfolio": user_portfolio,
                 }
 
                 await websocket.send_json(broadcast_payload)
