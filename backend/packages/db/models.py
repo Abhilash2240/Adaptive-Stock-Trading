@@ -43,9 +43,6 @@ class UserDB(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True), server_default=func.now()),
     )
 
-    # relationships
-    settings: Optional["UserSettingsDB"] = Relationship(back_populates="user")
-
 
 class UserSettingsDB(SQLModel, table=True):
     """Per-user preferences (trading mode, notifications, etc.)."""
@@ -53,7 +50,7 @@ class UserSettingsDB(SQLModel, table=True):
     __tablename__ = "user_settings"
 
     id: str = Field(default_factory=new_uuid, primary_key=True)
-    user_id: str = Field(foreign_key="users.id", unique=True, index=True)
+    user_id: str = Field(unique=True, index=True)
     trading_mode: str = Field(default="paper")  # paper | live
     market_data_provider: str = Field(default="twelvedata")
     gemini_enabled: bool = Field(default=False)
@@ -63,8 +60,6 @@ class UserSettingsDB(SQLModel, table=True):
         default_factory=utcnow,
         sa_column=Column(DateTime(timezone=True), server_default=func.now()),
     )
-
-    user: Optional[UserDB] = Relationship(back_populates="settings")
 
 
 # --------------------------------------------------------------------------- #
@@ -127,7 +122,7 @@ class OrderDB(SQLModel, table=True):
     )
 
     id: str = Field(default_factory=new_uuid, primary_key=True)
-    user_id: str = Field(foreign_key="users.id", index=True)
+    user_id: str = Field(index=True)
     symbol: str = Field(max_length=10)
     side: str = Field(max_length=4)  # buy | sell
     quantity: int
@@ -150,7 +145,7 @@ class PositionDB(SQLModel, table=True):
     )
 
     id: str = Field(default_factory=new_uuid, primary_key=True)
-    user_id: str = Field(foreign_key="users.id", index=True)
+    user_id: str = Field(index=True)
     symbol: str = Field(max_length=10)
     quantity: int = Field(default=0)
     avg_entry_price: float = Field(default=0.0)
@@ -275,7 +270,7 @@ class BacktestRunDB(SQLModel, table=True):
     __tablename__ = "backtest_runs"
 
     id: str = Field(default_factory=new_uuid, primary_key=True)
-    user_id: str = Field(foreign_key="users.id", index=True)
+    user_id: str = Field(index=True)
     model_name: str = Field(max_length=100)
     symbols: str = Field(max_length=200)  # comma-separated
     start_date: Optional[datetime] = None
