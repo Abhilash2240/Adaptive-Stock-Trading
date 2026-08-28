@@ -37,6 +37,9 @@ logger = logging.getLogger(__name__)
 #  User Repository
 # --------------------------------------------------------------------------- #
 
+# NOT CURRENTLY USED — Auth0 replaced local username/password account flows.
+# Reserved only if local user administration is restored. See repository review,
+# 2026-08-28.
 class UserRepository:
     """CRUD for the ``users`` table."""
 
@@ -105,6 +108,8 @@ class UserSettingsRepository:
 #  Quote Repository (time-series)
 # --------------------------------------------------------------------------- #
 
+# NOT CURRENTLY USED — reserved for persisted historical quote storage and
+# replay, not yet wired into any route. See repository review, 2026-08-28.
 class QuoteRepository:
 
     def __init__(self, session: AsyncSession):
@@ -133,6 +138,8 @@ class QuoteRepository:
 #  OHLCV Repository
 # --------------------------------------------------------------------------- #
 
+# NOT CURRENTLY USED — reserved for historical OHLCV storage and training data,
+# not yet wired into any route. See repository review, 2026-08-28.
 class OHLCVRepository:
 
     def __init__(self, session: AsyncSession):
@@ -165,6 +172,9 @@ class OHLCVRepository:
 #  Order Repository
 # --------------------------------------------------------------------------- #
 
+# NOT CURRENTLY USED — reserved for an order lifecycle ledger with pending,
+# filled, and cancelled states, not yet wired into any route. See repository
+# review, 2026-08-28.
 class OrderRepository:
 
     def __init__(self, session: AsyncSession):
@@ -203,6 +213,8 @@ class OrderRepository:
 #  Position Repository
 # --------------------------------------------------------------------------- #
 
+# NOT CURRENTLY USED — reserved for a materialized positions ledger; current
+# positions are derived from AgentActionDB. See repository review, 2026-08-28.
 class PositionRepository:
 
     def __init__(self, session: AsyncSession):
@@ -239,6 +251,9 @@ class PositionRepository:
 #  Agent Action Repository
 # --------------------------------------------------------------------------- #
 
+# NOT CURRENTLY USED — current trade and action routes access AgentActionDB
+# directly. Reserved for consolidating that persistence path. See repository
+# review, 2026-08-28.
 class AgentActionRepository:
 
     def __init__(self, session: AsyncSession):
@@ -267,6 +282,9 @@ class AgentActionRepository:
 #  Model Artifact Repository
 # --------------------------------------------------------------------------- #
 
+# NOT CURRENTLY USED — reserved for persisted model metadata and artifact
+# tracking, not yet wired into a route or service. See repository review,
+# 2026-08-28.
 class ModelArtifactRepository:
 
     def __init__(self, session: AsyncSession):
@@ -295,6 +313,8 @@ class ModelArtifactRepository:
 #  Training Repository
 # --------------------------------------------------------------------------- #
 
+# NOT CURRENTLY USED — reserved for persisted training-run and metric tracking,
+# not yet wired into a route or service. See repository review, 2026-08-28.
 class TrainingRepository:
 
     def __init__(self, session: AsyncSession):
@@ -334,6 +354,8 @@ class TrainingRepository:
 #  Backtest Repository
 # --------------------------------------------------------------------------- #
 
+# NOT CURRENTLY USED — reserved for persisted backtest results, not yet wired
+# into a route or service. See repository review, 2026-08-28.
 class BacktestRepository:
 
     def __init__(self, session: AsyncSession):
