@@ -93,7 +93,7 @@ async def get_current_user(
             detail="Invalid token payload",
         )
 
-    raw_roles = payload.get("https://yourapp/roles", [])
+    raw_roles = payload.get(settings.auth0_roles_claim, [])
     if isinstance(raw_roles, str):
         roles = (raw_roles,)
     elif isinstance(raw_roles, list):

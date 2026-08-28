@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     trust_proxy: bool = False
     auth0_domain: str = ""
     auth0_audience: str = ""
+    auth0_roles_claim: str = "https://yourapp/roles"
     openrouter_api_key: str = ""
     openrouter_model: str = "nvidia/nemotron-3-ultra-550b-a55b"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
