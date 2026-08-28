@@ -50,7 +50,7 @@ This document outlines the comprehensive security measures implemented for the A
 - **Action Categories**: Login, logout, stream requests, agent interactions
 
 ### 8. Environment Configuration
-- **Secret Management**: Secure handling of JWT secrets and API keys
+- **Auth0 Configuration**: Secure handling of Auth0 domain, audience, and API keys
 - **Environment Variables**: Configuration via environment-specific variables
 - **Production Hardening**: Stricter settings for production environment
 
@@ -73,10 +73,10 @@ This document outlines the comprehensive security measures implemented for the A
 
 ### Environment Variables
 ```bash
-# Security Configuration
-JWT_SECRET=your-super-secret-key-here
-JWT_ALGORITHM=HS256
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
+# Auth0 Configuration
+AUTH0_DOMAIN=your-tenant.us.auth0.com
+AUTH0_AUDIENCE=https://your-api-identifier
+AUTH0_ROLES_CLAIM=https://yourapp/roles
 
 # Environment
 ENVIRONMENT=development  # or production
@@ -84,6 +84,10 @@ ENVIRONMENT=development  # or production
 # Rate Limiting
 RATE_LIMIT_ENABLED=true
 ```
+
+Configure an Auth0 Post-Login Action to write authorization roles to the
+custom namespace specified by `AUTH0_ROLES_CLAIM`. The backend validates
+Auth0 RS256 tokens using the tenant's JWKS endpoint.
 
 ### Development vs Production
 - **Development**: Relaxed CORS, detailed error messages
@@ -131,7 +135,7 @@ RATE_LIMIT_ENABLED=true
 
 ### Security Updates
 - **Dependency Updates**: Regular updates of security-related packages
-- **Token Rotation**: Periodic JWT secret rotation
+- **Auth0 Key Rotation**: Auth0 manages signing-key rotation; the backend reads keys from the tenant JWKS endpoint
 - **Access Review**: Regular review of user permissions and access
 - **Log Analysis**: Routine analysis of security logs
 
@@ -143,7 +147,7 @@ RATE_LIMIT_ENABLED=true
 
 ## ⚠️ Critical Security Reminders
 
-1. **Change Default Secrets**: Always update JWT_SECRET in production
+1. **Auth0 Configuration**: Set the production tenant domain, API audience, and roles claim namespace
 2. **HTTPS Only**: Never run in production without TLS encryption
 3. **Database Security**: Ensure database credentials are secure
 4. **Regular Backups**: Maintain secure backups of user data
