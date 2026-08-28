@@ -86,7 +86,7 @@ class UserSettingsResponse(BaseModel):
     userId: str
     tradingMode: str
     marketDataProvider: str
-    geminiEnabled: bool
+    llmRationaleEnabled: bool
     notificationsEnabled: bool
 
     @classmethod
@@ -95,7 +95,7 @@ class UserSettingsResponse(BaseModel):
             userId=row.user_id,
             tradingMode=row.trading_mode,
             marketDataProvider=row.market_data_provider,
-            geminiEnabled=row.gemini_enabled,
+            llmRationaleEnabled=row.gemini_enabled,
             notificationsEnabled=row.notifications_enabled,
         )
 
@@ -104,7 +104,7 @@ class SaveSettingsPayload(BaseModel):
     userId: str
     tradingMode: str | None = None
     marketDataProvider: str | None = None
-    geminiEnabled: bool | None = None
+    llmRationaleEnabled: bool | None = None
     notificationsEnabled: bool | None = None
 
 

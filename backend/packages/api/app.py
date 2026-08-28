@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from prometheus_fastapi_instrumentator import Instrumentator
+from sqlalchemy import select
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -17,8 +18,10 @@ from starlette.requests import Request as StarletteRequest
 from typing import Annotated
 
 from packages.agent.service import AgentService
+from packages.agent.rationale import RationaleService
 from packages.data.provider import DataProvider, get_data_provider
 from packages.db.engine import get_session_ctx
+from packages.db.models import AgentActionDB
 from packages.db.repositories import UserSettingsRepository
 from packages.shared.config import Settings, get_settings
 from packages.shared.auth0 import (
@@ -31,6 +34,7 @@ from packages.shared.metrics import websocket_closed, websocket_connected, webso
 from packages.shared.schemas import (
     AgentAction,
     AgentStatus,
+    OrderSide,
     SaveSettingsPayload,
     StreamRequest,
     UserSettingsResponse,
@@ -286,8 +290,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             updates["trading_mode"] = payload.tradingMode
         if payload.marketDataProvider is not None:
             updates["market_data_provider"] = payload.marketDataProvider
-        if payload.geminiEnabled is not None:
-            updates["gemini_enabled"] = payload.geminiEnabled
+        if payload.llmRationaleEnabled is not None:
+            updates["gemini_enabled"] = payload.llmRationaleEnabled
         if payload.notificationsEnabled is not None:
             updates["notifications_enabled"] = payload.notificationsEnabled
 
@@ -394,6 +398,50 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         agent: AgentService = Depends(get_agent_service),
     ) -> AgentAction:
         return agent.get_action(symbol=symbol, portfolio=portfolio)
+
+        @app.post("/api/v1/agent/rationale", response_model=dict)
+        @limiter.limit("30/minute")
+        async def get_agent_rationale(
+            payload: dict = Body(...),
+            current_user: AuthenticatedUser = Depends(get_current_user),
+            agent: AgentService = Depends(get_agent_service),
+        ) -> dict:
+            symbol = str(payload.get("symbol") or "").strip().upper()
+            if not symbol:
+                raise HTTPException(status_code=422, detail="symbol is required")
+
+            settings = get_settings()
+            async with get_session_ctx() as session:
+                user_settings = await UserSettingsRepository(session).get(current_user.id)
+                if user_settings is None or not user_settings.gemini_enabled:
+                    return {"rationale": None, "reason": "disabled"}
+
+                result = await session.execute(
+                    select(AgentActionDB)
+                    .where(
+                        AgentActionDB.user_id == current_user.id,
+                        AgentActionDB.symbol == symbol,
+                    )
+                    .order_by(AgentActionDB.executed_at.desc())
+                    .limit(1)
+                )
+                latest_action = result.scalar_one_or_none()
+
+            if latest_action is None:
+                return {"rationale": None, "model": settings.openrouter_model}
+
+            action = AgentAction(
+                symbol=latest_action.symbol,
+                side=OrderSide(latest_action.side.upper()),
+                confidence=float(latest_action.confidence or 0.0),
+                generated_at=latest_action.executed_at,
+            )
+            rationale = await RationaleService(settings=settings).explain(
+                symbol,
+                action,
+                agent.get_indicator_snapshot(symbol),
+            )
+            return {"rationale": rationale, "model": settings.openrouter_model}
 
     @app.post("/api/v1/rl/train", response_model=dict)
     async def trigger_training(

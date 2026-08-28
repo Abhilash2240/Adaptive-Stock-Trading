@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     trust_proxy: bool = False
     auth0_domain: str = ""
     auth0_audience: str = ""
+    openrouter_api_key: str = ""
+    openrouter_model: str = "nvidia/nemotron-3-ultra-550b-a55b"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_timeout_seconds: float = 15.0
 
     @model_validator(mode="after")
     def apply_provider_defaults(self) -> "Settings":

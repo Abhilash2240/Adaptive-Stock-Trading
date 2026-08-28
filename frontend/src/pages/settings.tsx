@@ -21,14 +21,14 @@ export default function SettingsPage() {
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(
     userSettings?.notificationsEnabled ?? true,
   );
-  const [geminiEnabled, setGeminiEnabled] = useState<boolean>(
-    userSettings?.geminiEnabled ?? true,
+  const [llmRationaleEnabled, setLlmRationaleEnabled] = useState<boolean>(
+    userSettings?.llmRationaleEnabled ?? true,
   );
 
   useEffect(() => {
     if (!userSettings) return;
     setNotificationsEnabled(userSettings.notificationsEnabled);
-    setGeminiEnabled(userSettings.geminiEnabled);
+    setLlmRationaleEnabled(userSettings.llmRationaleEnabled);
   }, [userSettings]);
 
   const handleLogout = () => {
@@ -89,13 +89,13 @@ export default function SettingsPage() {
             }}
           />
           <ToggleRow
-            label="Gemini Assistance"
+            label="Trade Rationale"
             description="Allow model-generated rationale in the UI"
-            checked={geminiEnabled}
+            checked={llmRationaleEnabled}
             onToggle={async () => {
-              const next = !geminiEnabled;
-              setGeminiEnabled(next);
-              await persist({ geminiEnabled: next });
+              const next = !llmRationaleEnabled;
+              setLlmRationaleEnabled(next);
+              await persist({ llmRationaleEnabled: next });
             }}
           />
           <Row label="Trading Mode" value={(userSettings?.tradingMode ?? "paper").toUpperCase()} />

@@ -79,7 +79,7 @@ async def test_settings_crud(client, auth_headers):
         json={
             "userId": user_id,
             "tradingMode": "live",
-            "geminiEnabled": True,
+            "llmRationaleEnabled": True,
         },
     )
     assert r.status_code == 200

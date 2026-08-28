@@ -123,6 +123,25 @@ class AgentService:
             self._state = AgentState.IDLE
             return self._last_action
 
+    def get_indicator_snapshot(self, symbol: str) -> dict[str, float | str]:
+        """Return the latest raw indicators for a symbol without changing agent state."""
+        environment = self._get_environment(symbol)
+        closes = np.asarray(environment.features._closes, dtype=np.float64)
+        if len(closes) < 26:
+            return {}
+
+        highs = np.asarray(environment.features._highs, dtype=np.float64)
+        lows = np.asarray(environment.features._lows, dtype=np.float64)
+        return {
+            "rsi": environment.features._rsi(closes, 14),
+            "macd_histogram": environment.features._macd(closes),
+            "bollinger_position": environment.features._bb_position(closes, 20),
+            "ema_cross_direction": "bullish"
+            if environment.features._ema(closes, 9) > environment.features._ema(closes, 21)
+            else "bearish",
+            "atr": environment.features._atr(highs, lows, closes, 14),
+        }
+
     # -- Training step (one batch from replay buffer) ---------------
     def train_step(
         self,

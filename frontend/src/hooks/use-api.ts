@@ -152,12 +152,17 @@ export interface UserSettingsResponse {
 	userId: string;
 	tradingMode: "paper" | "live";
 	marketDataProvider: string;
-	geminiEnabled: boolean;
+	llmRationaleEnabled: boolean;
 	notificationsEnabled: boolean;
 }
 
 export interface SaveSettingsPayload extends Partial<UserSettingsResponse> {
 	userId: string;
+}
+
+export interface AgentRationaleResponse {
+	rationale: string | null;
+	model: string;
 }
 
 export const apiBaseUrl = API_BASE;
@@ -240,6 +245,20 @@ export function useSaveSettings() {
 		},
 		onSuccess: (data) => {
 			queryClient.setQueryData(["settings", data.userId], data);
+		},
+	});
+}
+
+export function useAgentRationale(symbol: string, enabled: boolean) {
+	return useMutation<AgentRationaleResponse>({
+		mutationFn: () => {
+			if (!enabled) {
+				return Promise.resolve({ rationale: null, model: "" });
+			}
+			return requestJson<AgentRationaleResponse>("/api/v1/agent/rationale", {
+				method: "POST",
+				body: JSON.stringify({ symbol }),
+			});
 		},
 	});
 }

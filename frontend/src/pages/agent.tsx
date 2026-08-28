@@ -1,15 +1,21 @@
 import { ReactNode, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { Activity, Bot, Play, Zap } from "lucide-react";
+import { Activity, Bot, Loader2, Play, Zap } from "lucide-react";
+import { useAuth0 } from "@auth0/auth0-react";
 
 import { Sidebar } from "@/components/Sidebar";
-import { useAgentStatus, useTrainStep } from "@/hooks/use-api";
+import { useAgentRationale, useAgentStatus, useSettings, useTrainStep } from "@/hooks/use-api";
 
 export default function AgentPage() {
   const [location, setLocation] = useLocation();
+  const { user } = useAuth0();
 
   const { data: status, isLoading, refetch } = useAgentStatus(true);
+  const { data: userSettings } = useSettings(user?.sub ?? "");
   const train = useTrainStep();
+  const rationaleEnabled = userSettings?.llmRationaleEnabled === true;
+  const decisionSymbol = status?.last_action?.symbol ?? "";
+  const rationale = useAgentRationale(decisionSymbol, rationaleEnabled);
   const [manualCount, setManualCount] = useState(1);
 
   const confidence = useMemo(() => Math.round((status?.last_action?.confidence ?? 0) * 100), [status]);
@@ -51,6 +57,23 @@ export default function AgentPage() {
               <Info label="Action" value={status?.last_action?.side ?? "HOLD"} />
               <Info label="Confidence" value={`${confidence}%`} />
               <Info label="Updated" value={status?.updated_at ? new Date(status.updated_at).toLocaleString() : "-"} />
+            </div>
+          )}
+          {rationaleEnabled && decisionSymbol && (
+            <div className="mt-4">
+              <button
+                onClick={() => rationale.mutate()}
+                disabled={rationale.isPending}
+                className="inline-flex items-center gap-2 rounded-md px-4 py-2 bg-[#6366f1] text-white disabled:opacity-60"
+              >
+                {rationale.isPending && <Loader2 size={14} className="animate-spin" />}
+                {rationale.isPending ? "Explaining..." : "Explain this decision"}
+              </button>
+              {rationale.data && (
+                <div className="mt-3 rounded-md border border-[#1e1e2e] bg-[#0d0d14] p-3 text-sm text-[#94a3b8]">
+                  {rationale.data.rationale ?? "No rationale available"}
+                </div>
+              )}
             </div>
           )}
         </section>
