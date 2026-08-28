@@ -402,6 +402,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/v1/agent/rationale", response_model=dict)
     @limiter.limit("30/minute")
     async def get_agent_rationale(
+        request: Request,
         payload: dict = Body(...),
         current_user: AuthenticatedUser = Depends(get_current_user),
         agent: AgentService = Depends(get_agent_service),

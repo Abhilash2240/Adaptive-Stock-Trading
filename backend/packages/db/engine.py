@@ -36,10 +36,16 @@ def _build_connection_url(raw_url: str) -> str:
 
     Also strips ``sslmode`` from the query string because asyncpg does not
     recognise it — we pass ``ssl`` via ``connect_args`` instead.
+    
+    For SQLite URLs, pass through unchanged.
     """
     from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
     url = raw_url.strip()
+
+    # --- SQLite URLs pass through unchanged ------
+    if url.startswith("sqlite"):
+        return url
 
     # --- driver prefix ---------------------------------------------------
     if url.startswith("postgres://"):
@@ -76,15 +82,29 @@ def get_engine() -> AsyncEngine:
 
     url = _build_connection_url(raw_url)
 
-    _engine = create_async_engine(
-        url,
-        echo=settings.log_level.upper() == "DEBUG",
-        pool_size=5,
-        max_overflow=10,
-        pool_pre_ping=True,
-        # Neon serverless uses SSL by default
-        connect_args={"ssl": "require"} if "neon.tech" in url else {},
-    )
+    # Build engine kwargs based on database type
+    engine_kwargs = {
+        "echo": settings.log_level.upper() == "DEBUG",
+        "pool_pre_ping": True,
+    }
+    
+    # SQLite and PostgreSQL need different configurations
+    if url.startswith("sqlite"):
+        # SQLite uses StaticPool by default and doesn't support pool_size/max_overflow
+        connect_args = {}
+    else:
+        # PostgreSQL pool configuration
+        engine_kwargs["pool_size"] = 5
+        engine_kwargs["max_overflow"] = 10
+        connect_args = {}
+        
+        if "neon.tech" in url:
+            # Neon serverless uses SSL by default
+            connect_args = {"ssl": "require"}
+    
+    engine_kwargs["connect_args"] = connect_args
+
+    _engine = create_async_engine(url, **engine_kwargs)
 
     logger.info("Database engine created — %s", url.split("@")[-1] if "@" in url else "(local)")
     return _engine
