@@ -52,3 +52,20 @@ def test_explain_returns_none_without_api_key():
     )
 
     assert result is None
+
+
+def test_explain_returns_none_on_http_error():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"error": "server failure"})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        result = asyncio.run(
+            RationaleService(client, Settings(openrouter_api_key="test-key")).explain(
+                "AAPL", action(), {}
+            )
+        )
+    finally:
+        asyncio.run(client.aclose())
+
+    assert result is None

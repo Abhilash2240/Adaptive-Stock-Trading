@@ -399,49 +399,49 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> AgentAction:
         return agent.get_action(symbol=symbol, portfolio=portfolio)
 
-        @app.post("/api/v1/agent/rationale", response_model=dict)
-        @limiter.limit("30/minute")
-        async def get_agent_rationale(
-            payload: dict = Body(...),
-            current_user: AuthenticatedUser = Depends(get_current_user),
-            agent: AgentService = Depends(get_agent_service),
-        ) -> dict:
-            symbol = str(payload.get("symbol") or "").strip().upper()
-            if not symbol:
-                raise HTTPException(status_code=422, detail="symbol is required")
+    @app.post("/api/v1/agent/rationale", response_model=dict)
+    @limiter.limit("30/minute")
+    async def get_agent_rationale(
+        payload: dict = Body(...),
+        current_user: AuthenticatedUser = Depends(get_current_user),
+        agent: AgentService = Depends(get_agent_service),
+    ) -> dict:
+        symbol = str(payload.get("symbol") or "").strip().upper()
+        if not symbol:
+            raise HTTPException(status_code=422, detail="symbol is required")
 
-            settings = get_settings()
-            async with get_session_ctx() as session:
-                user_settings = await UserSettingsRepository(session).get(current_user.id)
-                if user_settings is None or not user_settings.gemini_enabled:
-                    return {"rationale": None, "reason": "disabled"}
+        settings = get_settings()
+        async with get_session_ctx() as session:
+            user_settings = await UserSettingsRepository(session).get(current_user.id)
+            if user_settings is None or not user_settings.gemini_enabled:
+                return {"rationale": None, "reason": "disabled"}
 
-                result = await session.execute(
-                    select(AgentActionDB)
-                    .where(
-                        AgentActionDB.user_id == current_user.id,
-                        AgentActionDB.symbol == symbol,
-                    )
-                    .order_by(AgentActionDB.executed_at.desc())
-                    .limit(1)
+            result = await session.execute(
+                select(AgentActionDB)
+                .where(
+                    AgentActionDB.user_id == current_user.id,
+                    AgentActionDB.symbol == symbol,
                 )
-                latest_action = result.scalar_one_or_none()
-
-            if latest_action is None:
-                return {"rationale": None, "model": settings.openrouter_model}
-
-            action = AgentAction(
-                symbol=latest_action.symbol,
-                side=OrderSide(latest_action.side.upper()),
-                confidence=float(latest_action.confidence or 0.0),
-                generated_at=latest_action.executed_at,
+                .order_by(AgentActionDB.executed_at.desc())
+                .limit(1)
             )
-            rationale = await RationaleService(settings=settings).explain(
-                symbol,
-                action,
-                agent.get_indicator_snapshot(symbol),
-            )
-            return {"rationale": rationale, "model": settings.openrouter_model}
+            latest_action = result.scalar_one_or_none()
+
+        if latest_action is None:
+            return {"rationale": None, "model": settings.openrouter_model}
+
+        action = AgentAction(
+            symbol=latest_action.symbol,
+            side=OrderSide(latest_action.side.upper()),
+            confidence=float(latest_action.confidence or 0.0),
+            generated_at=latest_action.executed_at,
+        )
+        rationale = await RationaleService(settings=settings).explain(
+            symbol,
+            action,
+            agent.get_indicator_snapshot(symbol),
+        )
+        return {"rationale": rationale, "model": settings.openrouter_model}
 
     @app.post("/api/v1/rl/train", response_model=dict)
     async def trigger_training(
