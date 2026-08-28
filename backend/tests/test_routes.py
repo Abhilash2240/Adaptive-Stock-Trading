@@ -210,6 +210,23 @@ async def test_sell_rejects_oversell_and_allows_owned_quantity(client, auth_head
 
 async def test_portfolio_unrealized_pnl_uses_latest_quote(client, auth_headers):
     provider = get_data_provider()
+    async with get_session_ctx() as session:
+        now = datetime.now(timezone.utc)
+        session.add(
+            AgentActionDB(
+                id=920001,
+                user_id="test-user",
+                symbol="AAPL",
+                side="BUY",
+                quantity=1,
+                price=195.50,
+                confidence=0.5,
+                executed_at=now,
+                timestamp=now,
+            )
+        )
+        await session.commit()
+
     provider.set_latest_price("AAPL", 205.50)
     first = await client.get("/api/v1/portfolio", headers=auth_headers)
     first_pnl = first.json()["unrealized_pnl"]
@@ -254,7 +271,7 @@ async def test_websocket_broadcast_uses_user_portfolio(client, auth_headers, mon
             portfolio.cash = 9_800.0
         session.add(
             AgentActionDB(
-                id=900004,
+                id=910004,
                 user_id="test-user",
                 symbol="AAPL",
                 side="BUY",
