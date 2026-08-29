@@ -50,7 +50,7 @@ This document outlines the comprehensive security measures implemented for the A
 - **Action Categories**: Login, logout, stream requests, agent interactions
 
 ### 8. Environment Configuration
-- **Auth0 Configuration**: Secure handling of Auth0 domain, audience, and API keys
+- **Clerk Configuration**: Secure handling of Clerk domain and API keys
 - **Environment Variables**: Configuration via environment-specific variables
 - **Production Hardening**: Stricter settings for production environment
 
@@ -73,10 +73,9 @@ This document outlines the comprehensive security measures implemented for the A
 
 ### Environment Variables
 ```bash
-# Auth0 Configuration
-AUTH0_DOMAIN=your-tenant.us.auth0.com
-AUTH0_AUDIENCE=https://your-api-identifier
-AUTH0_ROLES_CLAIM=https://yourapp/roles
+# Clerk Configuration
+CLERK_DOMAIN=your-instance.clerk.accounts.dev
+CLERK_ROLE_CLAIM=role
 
 # Environment
 ENVIRONMENT=development  # or production
@@ -85,9 +84,9 @@ ENVIRONMENT=development  # or production
 RATE_LIMIT_ENABLED=true
 ```
 
-Configure an Auth0 Post-Login Action to write authorization roles to the
-custom namespace specified by `AUTH0_ROLES_CLAIM`. The backend validates
-Auth0 RS256 tokens using the tenant's JWKS endpoint.
+Configure a Clerk JWT template named `backend` to include the `role` claim.
+The backend validates Clerk RS256 tokens using the Clerk Frontend API URL's
+JWKS endpoint. Set `CLERK_DOMAIN` to that Frontend API URL.
 
 ### Development vs Production
 - **Development**: Relaxed CORS, detailed error messages
@@ -135,7 +134,7 @@ Auth0 RS256 tokens using the tenant's JWKS endpoint.
 
 ### Security Updates
 - **Dependency Updates**: Regular updates of security-related packages
-- **Auth0 Key Rotation**: Auth0 manages signing-key rotation; the backend reads keys from the tenant JWKS endpoint
+- **Clerk Key Rotation**: Clerk manages signing-key rotation; the backend reads keys from the Clerk JWKS endpoint
 - **Access Review**: Regular review of user permissions and access
 - **Log Analysis**: Routine analysis of security logs
 
@@ -147,7 +146,7 @@ Auth0 RS256 tokens using the tenant's JWKS endpoint.
 
 ## ⚠️ Critical Security Reminders
 
-1. **Auth0 Configuration**: Set the production tenant domain, API audience, and roles claim namespace
+1. **Clerk Configuration**: Set the production Frontend API URL, create the `backend` JWT template, and configure the role claim
 2. **HTTPS Only**: Never run in production without TLS encryption
 3. **Database Security**: Ensure database credentials are secure
 4. **Regular Backups**: Maintain secure backups of user data

@@ -159,7 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "docs": "/docs",
             "health": "/api/v1/health",
             "features": [
-                "Auth0 JWT Authentication",
+                "Clerk JWT Authentication",
                 "Real-time Stock Data Streaming",
                 "AI Trading Agent",
                 "Rate Limiting",
@@ -176,7 +176,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": "operational",
             "environment": resolved_settings.environment,
             "security": {
-                "authentication": "Auth0 JWT",
+                "authentication": "Clerk JWT",
                 "rate_limiting": "enabled",
                 "cors": "configured",
                 "security_headers": "enabled"

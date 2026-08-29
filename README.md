@@ -25,44 +25,30 @@ python run_server.py        # runs on http://localhost:8001
 ### Frontend setup
 cd frontend
 npm install
-cp .env.example .env.local  # frontend Auth0/API configuration
+cp .env.example .env.local  # frontend Clerk/API configuration
 npm run dev                 # runs on http://localhost:5173
 
 ### Authentication setup
-Authentication uses Auth0's hosted Universal Login. The frontend calls
-`loginWithRedirect` from `frontend/src/App.tsx`; this project does not provide
-local `/login` or `/register` routes.
+Authentication uses Clerk's hosted sign-in experience. The frontend calls
+`openSignIn` from `frontend/src/App.tsx`; this project does not provide local
+`/login` or `/register` routes.
 
-1. Create an Auth0 application (typically a Single Page Application).
-2. Create an Auth0 API and use its identifier as the API audience.
-3. In the Auth0 application settings, allow `http://localhost:5173` as an
-   allowed callback, logout, and web origin URL.
-4. Create `frontend/.env.local` with:
+1. Create a Clerk application in the Clerk dashboard.
+2. Copy the Clerk publishable key into `frontend/.env.local`:
    ```dotenv
-   VITE_AUTH0_DOMAIN=your-tenant.us.auth0.com
-   VITE_AUTH0_CLIENT_ID=your-auth0-client-id
-   VITE_AUTH0_AUDIENCE=https://your-api-identifier
-   VITE_AUTH0_REDIRECT_URI=http://localhost:5173
+   VITE_CLERK_PUBLISHABLE_KEY=pk_test_your_key_here
    ```
-5. Create `backend/.env` from `backend/.env.example` and set:
+3. Create a JWT template named `backend` in the Clerk dashboard. Configure it
+   to issue the claims needed by the backend, including the `role` claim.
+4. Create `backend/.env` from `backend/.env.example` and set:
    ```dotenv
-   AUTH0_DOMAIN=your-tenant.us.auth0.com
-   AUTH0_AUDIENCE=https://your-api-identifier
-   AUTH0_ROLES_CLAIM=https://yourapp/roles
+   CLERK_DOMAIN=your-instance.clerk.accounts.dev
+   CLERK_ROLE_CLAIM=role
    ```
-6. In the Auth0 tenant, configure a Post-Login Action to write authorization
-   roles to the same custom claim namespace:
-   ```javascript
-   module.exports = async (event, api) => {
-     const roles = event.authorization?.roles || [];
-     api.idToken.setCustomClaim('https://yourapp/roles', roles);
-   };
-   ```
-   Set `AUTH0_ROLES_CLAIM` to the exact namespace used by that Action. The
-   backend validates Auth0 RS256 tokens through the tenant JWKS endpoint; no
+   The backend validates Clerk RS256 tokens through Clerk's JWKS endpoint; no
    locally generated signing secret is required.
 
-On first sign-in, Auth0 handles account creation and login. Paper trading is
+On first sign-in, Clerk handles account creation and login. Paper trading is
 enabled by default; no real money is used.
 
 ## Infra commands

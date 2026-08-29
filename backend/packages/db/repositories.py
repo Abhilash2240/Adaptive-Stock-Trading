@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 #  User Repository
 # --------------------------------------------------------------------------- #
 
-# NOT CURRENTLY USED — Auth0 replaced local username/password account flows.
+# NOT CURRENTLY USED — Clerk replaced local username/password account flows.
 # Reserved only if local user administration is restored. See repository review,
 # 2026-08-28.
 class UserRepository:
