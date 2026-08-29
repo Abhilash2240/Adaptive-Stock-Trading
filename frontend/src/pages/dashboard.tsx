@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { Bot, Cpu } from "lucide-react";
+import { Bot, Cpu, TrendingUp, TrendingDown, Minus } from "lucide-react";
 
 import { Sidebar } from "@/components/Sidebar";
 import {
@@ -54,67 +54,132 @@ export function Dashboard(props: DashboardProps) {
     const c = props.latestTick?.confidence ?? 0;
     return {
       HOLD: (1 - c) * 0.4,
-      BUY: props.latestTick?.action_signal === "BUY" ? c : c * 0.5,
+      BUY:  props.latestTick?.action_signal === "BUY"  ? c : c * 0.5,
       SELL: props.latestTick?.action_signal === "SELL" ? c : c * 0.45,
     };
   }, [props.latestTick]);
 
   const maxQ = Math.max(qValues.BUY, qValues.SELL, qValues.HOLD, 0.01);
+  const signal = props.latestTick?.action_signal ?? "HOLD";
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
-      <div className="pointer-events-none absolute inset-0 opacity-90">
-        <div className="absolute -top-40 -left-16 h-96 w-96 rounded-full bg-[radial-gradient(circle_at_center,hsl(var(--primary)/0.35),transparent_65%)]" />
-        <div className="absolute top-40 -right-24 h-[28rem] w-[28rem] rounded-full bg-[radial-gradient(circle_at_center,hsl(var(--accent)/0.22),transparent_65%)]" />
+    <div className="relative min-h-screen bg-background text-foreground">
+      {/* Ambient botanical blobs */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden>
+        <div className="absolute -top-32 -left-20 h-[28rem] w-[28rem] rounded-full bg-[hsl(var(--accent)/0.08)] blur-3xl" />
+        <div className="absolute top-1/2 -right-20 h-96 w-96 rounded-full bg-[hsl(var(--destructive)/0.06)] blur-3xl" />
       </div>
-      <Sidebar
-        activeRoute={path}
-        onNavigate={props.onNavigate}
-      />
 
-      <main className="relative ml-60 space-y-6 p-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold tracking-tight">Adaptive Dashboard</h1>
-          <div className="flex items-center gap-4 text-sm">
+      <Sidebar activeRoute={path} onNavigate={props.onNavigate} />
+
+      <main className="relative ml-60 p-8 space-y-7">
+        {/* Page Header */}
+        <div className="flex items-start justify-between animate-fade-in">
+          <div>
+            <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1 font-sans">
+              Welcome back
+            </p>
+            <h1
+              className="text-3xl font-semibold text-foreground leading-tight"
+              style={{ fontFamily: "'Playfair Display', serif" }}
+            >
+              Trading <em>Dashboard</em>
+            </h1>
+          </div>
+          <div className="flex items-center gap-4 text-sm pt-1">
             <div className="flex items-center gap-2">
-              <span className={["h-2.5 w-2.5 rounded-full", props.wsConnected ? "bg-[hsl(var(--accent))] animate-pulse" : "bg-muted-foreground/60"].join(" ")} />
-              <span className="text-muted-foreground">{props.wsConnected ? "Live" : "Offline"}</span>
+              <span
+                className={[
+                  "h-2 w-2 rounded-full transition-all duration-700",
+                  props.wsConnected
+                    ? "bg-[hsl(var(--accent))] animate-pulse"
+                    : "bg-muted-foreground/40",
+                ].join(" ")}
+              />
+              <span className="text-muted-foreground font-sans text-xs tracking-wide uppercase">
+                {props.wsConnected ? "Live" : "Offline"}
+              </span>
             </div>
-            <span className="text-muted-foreground/60">|</span>
-            <span className="font-mono">{now.toLocaleTimeString()}</span>
+            <span className="text-border">|</span>
+            <span className="font-mono text-xs text-muted-foreground">{now.toLocaleTimeString()}</span>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard label="Portfolio Value" value={fmt(props.portfolioValue)} delta={`${signed(props.portfolioDelta)} (${signedPct(props.portfolioDeltaPct)})`} positive={props.portfolioDelta >= 0} />
-          <StatCard label="Cash Available" value={fmt(props.cash)} sub={`${props.cashPct.toFixed(1)}% of portfolio`} />
-          <StatCard label="Open Positions" value={String(props.openPositionsCount)} sub={`across ${props.openPositionsCount} symbols`} />
-          <StatCard label="Today's P&L" value={signedMoney(props.todayPnl)} delta={signedPct(props.todayPnlPct)} positive={props.todayPnl >= 0} />
+        {/* Stat Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          <StatCard
+            label="Portfolio Value"
+            value={fmt(props.portfolioValue)}
+            delta={`${signed(props.portfolioDelta)} (${signedPct(props.portfolioDeltaPct)})`}
+            positive={props.portfolioDelta >= 0}
+            delay={1}
+          />
+          <StatCard
+            label="Cash Available"
+            value={fmt(props.cash)}
+            sub={`${props.cashPct.toFixed(1)}% of portfolio`}
+            delay={2}
+          />
+          <StatCard
+            label="Open Positions"
+            value={String(props.openPositionsCount)}
+            sub={`across ${props.openPositionsCount} symbol${props.openPositionsCount !== 1 ? "s" : ""}`}
+            delay={3}
+          />
+          <StatCard
+            label="Unrealised P&L"
+            value={signedMoney(props.todayPnl)}
+            delta={signedPct(props.todayPnlPct)}
+            positive={props.todayPnl >= 0}
+            delay={4}
+          />
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          <section className="xl:col-span-2 rounded-xl border border-border/80 bg-card/80 p-4 shadow-lg backdrop-blur-sm">
-            <div className="flex items-baseline justify-between">
+        {/* Chart + Signal */}
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+          {/* Price Chart */}
+          <section className="xl:col-span-2 rounded-3xl border border-border bg-card p-6 shadow-botanical card-hover animate-fade-in stagger-2">
+            <div className="flex items-start justify-between mb-5">
               <div>
-                <h2 className="font-semibold text-lg">{props.currentSymbol}</h2>
-                <p className="text-sm text-muted-foreground">{fmt(props.currentPrice)}</p>
+                <p className="text-xs uppercase tracking-widest text-muted-foreground font-sans">Current Price</p>
+                <h2
+                  className="text-2xl font-semibold mt-0.5"
+                  style={{ fontFamily: "'Playfair Display', serif" }}
+                >
+                  {props.currentSymbol}
+                </h2>
+                <p className="text-lg font-mono mt-0.5 text-foreground">{fmt(props.currentPrice)}</p>
               </div>
-              <p className={props.priceChange >= 0 ? "text-emerald-500" : "text-rose-500"}>{signed(props.priceChange)} ({signedPct(props.priceChangePct)})</p>
+              <p
+                className={[
+                  "text-sm font-medium px-3 py-1.5 rounded-full font-mono",
+                  props.priceChange >= 0
+                    ? "bg-[hsl(var(--accent)/0.12)] text-[hsl(var(--accent))]"
+                    : "bg-[hsl(var(--destructive)/0.10)] text-[hsl(var(--destructive))]",
+                ].join(" ")}
+              >
+                {signed(props.priceChange)} ({signedPct(props.priceChangePct)})
+              </p>
             </div>
 
-            <div className="mt-3 h-72 rounded-lg border border-border/70 bg-background/70 p-3">
+            {/* Chart Area */}
+            <div className="h-56 rounded-2xl border border-border/50 bg-background/60 p-3 overflow-hidden">
               <Sparkline values={props.priceHistory} />
             </div>
 
-            <div className="mt-3 flex gap-2">
+            {/* Symbol Tabs */}
+            <div className="mt-4 flex gap-2 flex-wrap">
               {props.symbols.map((s) => (
                 <button
                   key={s}
                   onClick={() => props.onSymbolChange(s)}
                   className={[
-                    "px-3 py-1.5 rounded-md text-sm transition-all duration-150",
-                    props.currentSymbol === s ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary",
+                    "px-4 py-1.5 rounded-full text-xs font-medium uppercase tracking-wide transition-all duration-300",
+                    props.currentSymbol === s
+                      ? "text-primary-foreground shadow-botanical"
+                      : "border border-border text-muted-foreground hover:border-[hsl(var(--accent))] hover:text-foreground",
                   ].join(" ")}
+                  style={props.currentSymbol === s ? { background: "var(--botanical-forest)" } : {}}
                 >
                   {s}
                 </button>
@@ -122,80 +187,134 @@ export function Dashboard(props: DashboardProps) {
             </div>
           </section>
 
-          <section className="rounded-xl border border-border/80 bg-card/80 p-4 shadow-lg backdrop-blur-sm">
-            <h3 className="flex items-center gap-2 font-semibold"><Cpu size={16} className="text-primary" />AI Signal</h3>
-            <div className="mt-4 text-center">
-              <span className={badgeClass(props.latestTick?.action_signal)}>{props.latestTick?.action_signal ?? "HOLD"}</span>
-            </div>
-            <div className="mt-4 flex justify-between text-sm text-muted-foreground">
-              <span>Confidence</span>
-              <span>{Math.round((props.latestTick?.confidence ?? 0) * 100)}%</span>
-            </div>
-            <div className="mt-2 h-2 overflow-hidden rounded bg-secondary">
-              <div className="h-full transition-all duration-300" style={{ width: `${Math.round((props.latestTick?.confidence ?? 0) * 100)}%`, backgroundColor: signalColor(props.latestTick?.action_signal) }} />
+          {/* AI Signal Panel */}
+          <section className="rounded-3xl border border-border bg-card p-6 shadow-botanical card-hover animate-fade-in stagger-3 flex flex-col">
+            <div className="flex items-center gap-2 mb-5">
+              <div className="h-7 w-7 rounded-full flex items-center justify-center"
+                style={{ background: "hsl(var(--accent)/0.15)" }}>
+                <Cpu size={14} strokeWidth={1.5} className="text-[hsl(var(--accent))]" />
+              </div>
+              <h3 className="font-semibold text-sm uppercase tracking-widest text-muted-foreground font-sans">
+                AI Signal
+              </h3>
             </div>
 
-            <div className="mt-5 space-y-2 text-xs">
+            {/* Signal Badge */}
+            <div className="flex flex-col items-center gap-2 py-4">
+              <SignalBadge signal={signal} large />
+              <p className="text-xs text-muted-foreground font-sans">
+                {Math.round((props.latestTick?.confidence ?? 0) * 100)}% confidence
+              </p>
+            </div>
+
+            {/* Confidence Bar */}
+            <div className="mt-2">
+              <div className="h-1.5 rounded-full bg-border overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-700 ease-out"
+                  style={{
+                    width: `${Math.round((props.latestTick?.confidence ?? 0) * 100)}%`,
+                    background: signalBgColor(signal),
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Q-Values */}
+            <div className="mt-5 space-y-2.5">
               {(["HOLD", "BUY", "SELL"] as const).map((k) => (
-                <div key={k} className="grid grid-cols-[40px,1fr,50px] items-center gap-2">
-                  <span className={props.latestTick?.action_signal === k ? "text-foreground" : "text-muted-foreground"}>{k}</span>
-                  <div className="h-1.5 overflow-hidden rounded bg-secondary">
-                    <div className="h-full" style={{ width: `${Math.round((qValues[k] / maxQ) * 100)}%`, background: props.latestTick?.action_signal === k ? signalColor(k) : "hsl(var(--primary))" }} />
+                <div key={k} className="grid grid-cols-[44px,1fr,44px] items-center gap-2">
+                  <span className={[
+                    "text-xs font-medium",
+                    signal === k ? "text-foreground" : "text-muted-foreground",
+                  ].join(" ")}>
+                    {k}
+                  </span>
+                  <div className="h-1.5 rounded-full bg-border overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500 ease-out"
+                      style={{
+                        width: `${Math.round((qValues[k] / maxQ) * 100)}%`,
+                        background: signal === k ? signalBgColor(k) : "hsl(var(--accent)/0.4)",
+                      }}
+                    />
                   </div>
-                  <span className="font-mono text-right">{qValues[k].toFixed(3)}</span>
+                  <span className="font-mono text-[11px] text-right text-muted-foreground">
+                    {qValues[k].toFixed(3)}
+                  </span>
                 </div>
               ))}
             </div>
 
-            <div className="grid grid-cols-2 gap-2 mt-5 text-xs">
-              <MiniStat label="epsilon" value={String(props.agentStatus?.epsilon ?? "-")} />
-              <MiniStat label="steps" value={String(props.agentStatus?.step_count ?? "-")} />
-              <MiniStat label="buffer" value={String(props.agentStatus?.buffer_size ?? "-")} />
-              <MiniStat label="model" value={props.agentStatus?.model_version ?? "-"} />
+            {/* Mini Stats */}
+            <div className="grid grid-cols-2 gap-2 mt-5">
+              <MiniStat label="ε‑decay"  value={String(props.agentStatus?.epsilon ?? "—")} />
+              <MiniStat label="steps"    value={String(props.agentStatus?.step_count ?? "—")} />
+              <MiniStat label="buffer"   value={String(props.agentStatus?.buffer_size ?? "—")} />
+              <MiniStat label="model"    value={props.agentStatus?.model_version ?? "—"} />
             </div>
 
-            <TradeComposer
-              symbol={props.currentSymbol}
-              price={props.currentPrice}
-              onSubmit={props.onPlaceTrade}
-              loading={props.placingTrade}
-              error={props.tradeError}
-            />
+            {/* Trade Composer */}
+            <div className="mt-5 flex-1 flex flex-col justify-end">
+              <TradeComposer
+                symbol={props.currentSymbol}
+                price={props.currentPrice}
+                onSubmit={props.onPlaceTrade}
+                loading={props.placingTrade}
+                error={props.tradeError}
+              />
+            </div>
           </section>
         </div>
 
-        <section className="rounded-xl border border-border/80 bg-card/80 p-4 shadow-lg backdrop-blur-sm">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold">Recent Trades</h3>
-            <button onClick={() => setLocation("/trades")} className="text-sm text-primary">View All →</button>
+        {/* Recent Trades */}
+        <section className="rounded-3xl border border-border bg-card p-6 shadow-botanical animate-fade-in stagger-4">
+          <div className="flex items-center justify-between mb-5">
+            <h3
+              className="font-semibold text-base"
+              style={{ fontFamily: "'Playfair Display', serif" }}
+            >
+              Recent Trades
+            </h3>
+            <button
+              onClick={() => setLocation("/trades")}
+              className="text-xs uppercase tracking-widest text-[hsl(var(--accent))] hover:text-foreground transition-colors duration-300 font-sans"
+            >
+              View All →
+            </button>
           </div>
 
           {props.recentTrades.length === 0 ? (
-            <div className="py-10 text-center text-muted-foreground">
-              <Bot className="mx-auto mb-2 text-primary" />
-              No trades yet — the AI agent is collecting market data
+            <div className="py-12 text-center space-y-3 text-muted-foreground">
+              <div className="mx-auto h-10 w-10 rounded-full flex items-center justify-center"
+                style={{ background: "hsl(var(--accent)/0.10)" }}>
+                <Bot size={18} strokeWidth={1.5} className="text-[hsl(var(--accent))]" />
+              </div>
+              <p className="text-sm font-sans">
+                No trades yet — the agent is observing the market
+              </p>
             </div>
           ) : (
-            <table className="w-full mt-3 text-sm">
-              <thead className="text-xs text-muted-foreground">
-                <tr className="border-b border-border/80">
-                  <th className="text-left py-2">Time</th>
-                  <th className="text-left py-2">Symbol</th>
-                  <th className="text-left py-2">Action</th>
-                  <th className="text-left py-2">Qty</th>
-                  <th className="text-left py-2">Price</th>
-                  <th className="text-left py-2">Confidence</th>
+            <table className="w-full text-sm font-sans">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-2 text-xs uppercase tracking-wide text-muted-foreground font-medium">Time</th>
+                  <th className="text-left py-2 text-xs uppercase tracking-wide text-muted-foreground font-medium">Symbol</th>
+                  <th className="text-left py-2 text-xs uppercase tracking-wide text-muted-foreground font-medium">Action</th>
+                  <th className="text-left py-2 text-xs uppercase tracking-wide text-muted-foreground font-medium">Qty</th>
+                  <th className="text-left py-2 text-xs uppercase tracking-wide text-muted-foreground font-medium">Price</th>
+                  <th className="text-left py-2 text-xs uppercase tracking-wide text-muted-foreground font-medium">Confidence</th>
                 </tr>
               </thead>
               <tbody>
                 {props.recentTrades.map((t) => (
-                  <tr key={t.id} className="border-b border-border/70 hover:bg-secondary/40">
-                    <td className="py-2 font-mono">{new Date(t.executed_at).toLocaleTimeString()}</td>
-                    <td className="py-2">{t.symbol}</td>
-                    <td className="py-2"><span className={badgeClass(t.side)}>{t.side}</span></td>
-                    <td className="py-2 font-mono">{t.quantity}</td>
-                    <td className="py-2 font-mono">{fmt(t.price)}</td>
-                    <td className="py-2 text-muted-foreground">{Math.round((t.confidence ?? 0) * 100)}%</td>
+                  <tr key={t.id} className="border-b border-border/50 hover:bg-[hsl(var(--accent)/0.04)] transition-colors duration-200">
+                    <td className="py-3 font-mono text-xs text-muted-foreground">{new Date(t.executed_at).toLocaleTimeString()}</td>
+                    <td className="py-3 font-medium">{t.symbol}</td>
+                    <td className="py-3"><SignalBadge signal={t.side} /></td>
+                    <td className="py-3 font-mono text-xs">{t.quantity}</td>
+                    <td className="py-3 font-mono text-xs">{fmt(t.price)}</td>
+                    <td className="py-3 text-muted-foreground text-xs">{Math.round((t.confidence ?? 0) * 100)}%</td>
                   </tr>
                 ))}
               </tbody>
@@ -207,82 +326,135 @@ export function Dashboard(props: DashboardProps) {
   );
 }
 
+/* ─── Helpers ────────────────────────────────────────────────────── */
 function fmt(n: number) {
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
 }
-function signed(n: number) {
-  return `${n >= 0 ? "+" : ""}${n.toFixed(2)}`;
-}
-function signedPct(n: number) {
-  return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
-}
-function signedMoney(n: number) {
-  return `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
+function signed(n: number)     { return `${n >= 0 ? "+" : ""}${n.toFixed(2)}`; }
+function signedPct(n: number)  { return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`; }
+function signedMoney(n: number){ return `${n >= 0 ? "+" : "−"}$${Math.abs(n).toFixed(2)}`; }
+
+function signalBgColor(side?: string) {
+  if (side === "BUY")  return "var(--signal-buy)";
+  if (side === "SELL") return "var(--signal-sell)";
+  return "var(--signal-hold)";
 }
 
-function signalColor(side?: string) {
-  if (side === "BUY") return "#22c55e";
-  if (side === "SELL") return "#ef4444";
-  return "#eab308";
-}
-
-function badgeClass(side?: string) {
-  const base = "inline-flex px-4 py-1 rounded-full text-sm font-semibold transition-all duration-150";
-  if (side === "BUY") return `${base} bg-[#22c55e] text-white shadow-[0_0_20px_rgba(34,197,94,0.3)]`;
-  if (side === "SELL") return `${base} bg-[#ef4444] text-white shadow-[0_0_20px_rgba(239,68,68,0.3)]`;
-  return `${base} bg-[#f59e0b] text-white shadow-[0_0_20px_rgba(245,158,11,0.3)]`;
-}
-
-function StatCard({ label, value, delta, sub, positive }: { label: string; value: string; delta?: string; sub?: string; positive?: boolean }) {
+function SignalBadge({ signal, large }: { signal?: string; large?: boolean }) {
+  const base = large
+    ? "inline-flex items-center gap-1.5 px-5 py-2 rounded-full text-sm font-semibold text-white uppercase tracking-wide"
+    : "inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold text-white uppercase tracking-wide";
+  const Icon = signal === "BUY" ? TrendingUp : signal === "SELL" ? TrendingDown : Minus;
   return (
-    <div className={[
-      "rounded-xl border border-border/80 bg-card/80 p-5 shadow-md backdrop-blur-sm",
-      positive == null ? "" : positive ? "shadow-[0_0_12px_rgba(34,197,94,0.15)]" : "shadow-[0_0_12px_rgba(239,68,68,0.15)]",
-    ].join(" ")}>
-      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="text-2xl font-bold tabular-nums mt-1">{value}</p>
-      {delta && <p className={positive === false ? "mt-1 text-sm text-rose-500" : "mt-1 text-sm text-emerald-500"}>{delta}</p>}
-      {sub && <p className="mt-1 text-sm text-muted-foreground">{sub}</p>}
+    <span className={base} style={{ background: signalBgColor(signal) }}>
+      <Icon size={large ? 15 : 12} strokeWidth={2} />
+      {signal ?? "HOLD"}
+    </span>
+  );
+}
+
+/* ─── Stat Card ──────────────────────────────────────────────────── */
+function StatCard({
+  label, value, delta, sub, positive, delay = 1,
+}: {
+  label: string; value: string; delta?: string; sub?: string; positive?: boolean; delay?: number;
+}) {
+  return (
+    <div
+      className={[
+        "rounded-3xl border border-border bg-card p-5 shadow-botanical card-hover animate-fade-in",
+        `stagger-${delay}`,
+      ].join(" ")}
+    >
+      <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-sans mb-2">{label}</p>
+      <p
+        className="text-2xl font-semibold tabular-nums"
+        style={{ fontFamily: "'Playfair Display', serif" }}
+      >
+        {value}
+      </p>
+      {delta && (
+        <p className={[
+          "mt-1.5 text-xs font-medium font-mono",
+          positive === false ? "text-[var(--signal-sell)]" : "text-[var(--signal-buy)]",
+        ].join(" ")}>
+          {delta}
+        </p>
+      )}
+      {sub && <p className="mt-1 text-xs text-muted-foreground font-sans">{sub}</p>}
     </div>
   );
 }
 
+/* ─── Sparkline ──────────────────────────────────────────────────── */
 function Sparkline({ values }: { values: number[] }) {
   if (!values.length) {
-    return <div className="grid h-full place-items-center text-sm text-muted-foreground">Waiting for ticks...</div>;
+    return (
+      <div className="grid h-full place-items-center text-sm text-muted-foreground font-sans">
+        Awaiting market data…
+      </div>
+    );
   }
   const min = Math.min(...values);
   const max = Math.max(...values);
   const norm = (v: number) => (max === min ? 0.5 : (v - min) / (max - min));
-  const points = values.map((v, i) => {
-    const x = (i / Math.max(values.length - 1, 1)) * 100;
-    const y = 100 - norm(v) * 100;
+  const W = 100; const H = 100;
+  const pts = values.map((v, i) => {
+    const x = (i / Math.max(values.length - 1, 1)) * W;
+    const y = H - norm(v) * H;
     return `${x},${y}`;
   });
 
+  const lastY = norm(values[values.length - 1]) * H;
+  const isUp = values[values.length - 1] >= values[0];
+  const strokeColor = isUp ? "var(--signal-buy)" : "var(--signal-sell)";
+  const fillColor   = isUp ? "rgba(74, 140, 92, 0.08)" : "rgba(194, 123, 102, 0.08)";
+
   return (
-    <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full">
-      <polyline fill="hsl(var(--primary)/0.09)" stroke="none" points={`0,100 ${points.join(" ")} 100,100`} />
-      <polyline fill="none" stroke="hsl(var(--primary))" strokeWidth="1.5" points={points.join(" ")} />
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-full">
+      <defs>
+        <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={strokeColor} stopOpacity="0.15" />
+          <stop offset="100%" stopColor={strokeColor} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <polyline
+        fill="url(#sparkFill)"
+        stroke="none"
+        points={`0,${H} ${pts.join(" ")} ${W},${H}`}
+      />
+      <polyline
+        fill="none"
+        stroke={strokeColor}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        points={pts.join(" ")}
+      />
+      {/* Last price dot */}
+      <circle
+        cx={W}
+        cy={H - lastY}
+        r="2.5"
+        fill={strokeColor}
+      />
     </svg>
   );
 }
 
+/* ─── Mini Stat ──────────────────────────────────────────────────── */
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border/70 bg-background/60 p-2">
-      <p className="text-[11px] text-muted-foreground">{label}</p>
-      <p className="truncate font-mono text-xs text-primary">{value}</p>
+    <div className="rounded-xl border border-border bg-background/60 p-2.5">
+      <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-sans">{label}</p>
+      <p className="truncate font-mono text-xs text-[hsl(var(--accent))] mt-0.5">{value}</p>
     </div>
   );
 }
 
+/* ─── Trade Composer ─────────────────────────────────────────────── */
 function TradeComposer({
-  symbol,
-  price,
-  onSubmit,
-  loading,
-  error,
+  symbol, price, onSubmit, loading, error,
 }: {
   symbol: string;
   price: number;
@@ -290,82 +462,90 @@ function TradeComposer({
   loading: boolean;
   error: string | null;
 }) {
-  const [side, setSide] = useState<"BUY" | "SELL">("BUY");
+  const [side, setSide]         = useState<"BUY" | "SELL">("BUY");
   const [quantity, setQuantity] = useState(1);
   const [confidence, setConfidence] = useState(0.8);
 
   return (
-    <div className="mt-5 rounded-lg border border-border/70 bg-background/60 p-3">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">Quick Paper Trade</p>
-      <p className="mt-1 text-sm text-muted-foreground">{symbol} at {fmt(price || 0)}</p>
+    <div className="rounded-2xl border border-border/70 bg-background/50 p-4 space-y-3">
+      <div>
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-sans">Quick Paper Trade</p>
+        <p className="text-xs text-muted-foreground font-mono mt-0.5">{symbol} @ {fmt(price || 0)}</p>
+      </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+      <div className="grid grid-cols-3 gap-2">
         <button
           onClick={() => setSide("BUY")}
           className={[
-            "rounded-md border px-2 py-1.5 transition",
-            side === "BUY" ? "border-emerald-500 bg-emerald-500/20 text-emerald-500" : "border-border text-muted-foreground",
+            "rounded-full py-1.5 text-xs font-semibold uppercase tracking-wide transition-all duration-300",
+            side === "BUY"
+              ? "text-white"
+              : "border border-border text-muted-foreground hover:border-[var(--signal-buy)] hover:text-[var(--signal-buy)]",
           ].join(" ")}
+          style={side === "BUY" ? { background: "var(--signal-buy)" } : {}}
         >
-          BUY
+          Buy
         </button>
         <button
           onClick={() => setSide("SELL")}
           className={[
-            "rounded-md border px-2 py-1.5 transition",
-            side === "SELL" ? "border-rose-500 bg-rose-500/20 text-rose-500" : "border-border text-muted-foreground",
+            "rounded-full py-1.5 text-xs font-semibold uppercase tracking-wide transition-all duration-300",
+            side === "SELL"
+              ? "text-white"
+              : "border border-border text-muted-foreground hover:border-[var(--signal-sell)] hover:text-[var(--signal-sell)]",
           ].join(" ")}
+          style={side === "SELL" ? { background: "var(--signal-sell)" } : {}}
         >
-          SELL
+          Sell
         </button>
         <input
           value={quantity}
           min={1}
           onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))}
           type="number"
-          className="rounded-md border border-border bg-background px-2 py-1.5 text-right text-foreground"
+          className="rounded-full border border-border bg-background px-3 py-1.5 text-right text-xs font-mono text-foreground focus:outline-none focus:border-[hsl(var(--accent))] transition-colors"
         />
       </div>
 
-      <div className="mt-3">
-        <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+      <div>
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground uppercase tracking-widest mb-1.5 font-sans">
           <span>Confidence</span>
-          <span>{Math.round(confidence * 100)}%</span>
+          <span className="font-mono">{Math.round(confidence * 100)}%</span>
         </div>
         <input
           type="range"
-          min={0.5}
-          max={1}
-          step={0.01}
+          min={0.5} max={1} step={0.01}
           value={confidence}
           onChange={(e) => setConfidence(Number(e.target.value))}
-          className="w-full accent-primary"
+          className="w-full h-1.5 cursor-pointer"
         />
       </div>
 
       <button
         onClick={() => void onSubmit({ side, quantity, confidence })}
         disabled={loading || price <= 0}
-        className="mt-3 w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+        className="w-full rounded-full py-2.5 text-xs font-semibold uppercase tracking-widest text-white transition-all duration-300 hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+        style={{ background: "var(--botanical-forest)" }}
       >
-        {loading ? "Placing..." : `Place ${side} Order`}
+        {loading ? "Placing…" : `Place ${side} Order`}
       </button>
 
-      {error ? <p className="mt-2 text-xs text-rose-500">{error}</p> : null}
+      {error && <p className="text-[11px] text-[var(--signal-sell)] font-sans">{error}</p>}
     </div>
   );
 }
 
+/* ─── Page Container ─────────────────────────────────────────────── */
 export default function DashboardPage() {
   const [, setLocation] = useLocation();
   const [currentSymbol, setCurrentSymbol] = useState("AAPL");
-  const [latestTick, setLatestTick] = useState<LiveTick | null>(null);
-  const [priceHistory, setPriceHistory] = useState<number[]>([]);
+  const [latestTick, setLatestTick]       = useState<LiveTick | null>(null);
+  const [priceHistory, setPriceHistory]   = useState<number[]>([]);
 
-  const { data: portfolio } = usePortfolioState(true);
-  const { data: trades = [] } = useTradeHistory(1, {});
-  const { data: agentStatus } = useAgentStatus(true);
-  const createTrade = useCreateTrade();
+  const { data: portfolio }                = usePortfolioState(true);
+  const { data: trades = [] }              = useTradeHistory(1, {});
+  const { data: agentStatus }              = useAgentStatus(true);
+  const createTrade                        = useCreateTrade();
 
   const symbols = useMemo(() => {
     const source = portfolio?.positions?.map((p) => p.symbol) ?? [];
@@ -383,30 +563,27 @@ export default function DashboardPage() {
     setPriceHistory((prev) => [...prev, tick.close].slice(-120));
   };
 
-  const { connected } = useTradingWebSocket({
-    onTick,
-    enabled: true,
-  });
+  const { connected } = useTradingWebSocket({ onTick, enabled: true });
 
   const currentPosition = portfolio?.positions.find((p) => p.symbol === currentSymbol);
-  const currentPrice = latestTick?.close ?? currentPosition?.current_price ?? 0;
-  const priceChange = latestTick ? latestTick.close - latestTick.open : 0;
-  const priceChangePct = latestTick && latestTick.open !== 0 ? (priceChange / latestTick.open) * 100 : 0;
+  const currentPrice    = latestTick?.close ?? currentPosition?.current_price ?? 0;
+  const priceChange     = latestTick ? latestTick.close - latestTick.open : 0;
+  const priceChangePct  = latestTick && latestTick.open !== 0 ? (priceChange / latestTick.open) * 100 : 0;
 
-  const totalValue = portfolio?.total_value ?? 0;
-  const cash = portfolio?.cash ?? 0;
-  const unrealized = portfolio?.unrealized_pnl ?? 0;
-  const cashPct = totalValue > 0 ? (cash / totalValue) * 100 : 0;
-  const deltaPct = totalValue > 0 ? (unrealized / totalValue) * 100 : 0;
+  const totalValue  = portfolio?.total_value ?? 0;
+  const cash        = portfolio?.cash ?? 0;
+  const unrealized  = portfolio?.unrealized_pnl ?? 0;
+  const cashPct     = totalValue > 0 ? (cash / totalValue) * 100 : 0;
+  const deltaPct    = totalValue > 0 ? (unrealized / totalValue) * 100 : 0;
 
   const onPlaceTrade = async (payload: { side: "BUY" | "SELL"; quantity: number; confidence: number }) => {
     const orderPrice = currentPrice > 0 ? currentPrice : latestTick?.close ?? 0;
     await createTrade.mutateAsync({
-      symbol: currentSymbol,
-      side: payload.side,
-      quantity: payload.quantity,
+      symbol:     currentSymbol,
+      side:       payload.side,
+      quantity:   payload.quantity,
       confidence: payload.confidence,
-      price: orderPrice,
+      price:      orderPrice,
     });
   };
 

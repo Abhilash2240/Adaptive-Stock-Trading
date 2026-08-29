@@ -5,6 +5,7 @@ import {
   List,
   Settings,
 } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 interface SidebarProps {
   activeRoute: string;
@@ -14,51 +15,77 @@ interface SidebarProps {
 }
 
 const navItems = [
-  { key: "dashboard", label: "Dashboard", icon: BarChart3, route: "/dashboard" },
-  { key: "portfolio", label: "Portfolio", icon: Briefcase, route: "/portfolio" },
-  { key: "trades", label: "Trades", icon: List, route: "/trades" },
-  { key: "agent", label: "AI Agent", icon: Brain, route: "/agent" },
-  { key: "settings", label: "Settings", icon: Settings, route: "/settings" },
+  { key: "dashboard", label: "Dashboard",  icon: BarChart3, route: "/dashboard" },
+  { key: "portfolio", label: "Portfolio",   icon: Briefcase, route: "/portfolio" },
+  { key: "trades",    label: "Trades",      icon: List,      route: "/trades"    },
+  { key: "agent",     label: "AI Agent",    icon: Brain,     route: "/agent"     },
+  { key: "settings",  label: "Settings",    icon: Settings,  route: "/settings"  },
 ];
 
-export function Sidebar({ activeRoute, onNavigate, userEmail: _userEmail, onSignOut: _onSignOut }: SidebarProps) {
+export function Sidebar({ activeRoute, onNavigate }: SidebarProps) {
   return (
     <aside className="fixed left-0 top-0 flex h-screen w-60 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-      <div className="border-b border-sidebar-border px-5 py-5">
+      {/* Logotype */}
+      <div className="border-b border-sidebar-border px-5 py-6">
         <button
           onClick={() => onNavigate("/dashboard")}
-          className="flex items-center gap-2"
+          className="flex items-center gap-3 group"
         >
-          <div className="h-6 w-6 rounded-md bg-sidebar-primary shadow-[0_0_20px_hsl(var(--sidebar-primary)/0.45)]" />
-          <span className="text-lg font-semibold tracking-tight">AdaptiveTrader</span>
+          {/* Organic leaf mark */}
+          <div className="relative h-7 w-7 flex-shrink-0">
+            <div className="absolute inset-0 rounded-full bg-sidebar-primary opacity-20 group-hover:opacity-30 transition-opacity duration-500" />
+            <div
+              className="absolute inset-0.5 rounded-full"
+              style={{ background: "hsl(var(--sidebar-primary))", boxShadow: "0 0 18px hsl(var(--sidebar-primary) / 0.5)" }}
+            />
+          </div>
+          <div className="leading-none">
+            <span
+              className="block text-base font-semibold tracking-tight text-sidebar-foreground"
+              style={{ fontFamily: "'Playfair Display', serif", fontStyle: "italic" }}
+            >
+              Adaptive
+            </span>
+            <span className="block text-[10px] uppercase tracking-[0.18em] text-sidebar-foreground/50 font-sans">
+              Trader
+            </span>
+          </div>
         </button>
       </div>
 
-      <nav className="flex-1 space-y-2 p-3">
-        {navItems.map((item) => {
+      {/* Navigation */}
+      <nav className="flex-1 space-y-1 p-3 pt-4">
+        {navItems.map((item, i) => {
           const Icon = item.icon;
-          const active = activeRoute === item.route;
+          const active = activeRoute === item.route || activeRoute.startsWith(item.route + "/");
           return (
             <button
               key={item.key}
               onClick={() => onNavigate(item.route)}
               className={[
-                "w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all duration-150 relative",
+                "w-full flex items-center gap-3 px-4 py-2.5 rounded-full text-sm transition-all duration-300 relative overflow-hidden",
+                `animate-fade-in stagger-${Math.min(i + 1, 5)}`,
                 active
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-sidebar-foreground/75 hover:bg-sidebar-accent/70",
+                  ? "bg-sidebar-primary/20 text-sidebar-primary font-medium"
+                  : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60",
               ].join(" ")}
             >
-              {active && <span className="absolute left-0 top-0 h-full w-[3px] rounded-r bg-sidebar-primary" />}
-              <Icon size={18} />
+              {active && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-[3px] rounded-r-full bg-sidebar-primary" />
+              )}
+              <Icon size={16} strokeWidth={1.5} className="flex-shrink-0" />
               <span>{item.label}</span>
             </button>
           );
         })}
       </nav>
 
-      <div className="border-t border-sidebar-border p-4">
-        <p className="text-center text-xs text-sidebar-foreground/70">Ready to trade</p>
+      {/* Footer */}
+      <div className="border-t border-sidebar-border p-4 flex items-center justify-between">
+        <p className="text-[11px] tracking-wide uppercase text-sidebar-foreground/40" style={{ fontFamily: "'Source Sans 3', sans-serif" }}>
+          Live Trading
+        </p>
+        <ThemeToggle />
       </div>
     </aside>
   );

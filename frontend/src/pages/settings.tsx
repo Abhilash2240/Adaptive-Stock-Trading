@@ -8,15 +8,15 @@ import { useTheme } from "@/components/theme-provider";
 import { SaveSettingsPayload, useBackendReady, useSaveSettings, useSettings } from "@/hooks/use-api";
 
 export default function SettingsPage() {
-  const [location, setLocation] = useLocation();
-  const { user } = useUser();
-  const { signOut } = useClerk();
-  const { theme, setTheme } = useTheme();
-  const { data: backendReady } = useBackendReady();
-  const providerName = backendReady?.summary?.provider ?? "--";
-  const userId = user?.id ?? "";
-  const { data: userSettings } = useSettings(userId);
-  const saveSettings = useSaveSettings();
+  const [location, setLocation]   = useLocation();
+  const { user }                  = useUser();
+  const { signOut }               = useClerk();
+  const { theme, setTheme }       = useTheme();
+  const { data: backendReady }    = useBackendReady();
+  const providerName              = backendReady?.summary?.provider ?? "—";
+  const userId                    = user?.id ?? "";
+  const { data: userSettings }    = useSettings(userId);
+  const saveSettings              = useSaveSettings();
   const [confirmingLogout, setConfirmingLogout] = useState(false);
 
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(
@@ -42,39 +42,78 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-[#f1f5f9]">
-      <Sidebar
-        activeRoute={location}
-        onNavigate={setLocation}
-      />
+    <div className="min-h-screen bg-background text-foreground">
+      {/* Ambient blob */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden>
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 h-64 w-full max-w-lg rounded-full bg-[hsl(var(--accent)/0.06)] blur-3xl" />
+      </div>
 
-      <main className="ml-60 p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Settings size={22} /> Settings</h1>
-          <span className="text-sm text-[#94a3b8]">Provider: {userSettings?.marketDataProvider ?? providerName}</span>
+      <Sidebar activeRoute={location} onNavigate={setLocation} />
+
+      <main className="ml-60 p-8 space-y-7">
+        {/* Header */}
+        <div className="flex items-start justify-between animate-fade-in">
+          <div>
+            <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1 font-sans">
+              Preferences
+            </p>
+            <h1
+              className="text-3xl font-semibold text-foreground"
+              style={{ fontFamily: "'Playfair Display', serif" }}
+            >
+              <em>Settings</em>
+            </h1>
+          </div>
+          <span className="text-xs text-muted-foreground font-sans pt-2">
+            Provider: <span className="text-foreground capitalize">{userSettings?.marketDataProvider ?? providerName}</span>
+          </span>
         </div>
 
-        <section className="bg-[#12121a] border border-[#1e1e2e] rounded-xl p-5 space-y-4">
-          <h2 className="font-semibold flex items-center gap-2"><User size={16} /> Account</h2>
-          <Row label="User" value={user?.primaryEmailAddress?.emailAddress ?? "-"} />
-          <Row label="Status" value={user ? "Active" : "Signed out"} />
-          <Row
-            label="Created"
-            value={user?.updatedAt ? user.updatedAt.toLocaleDateString() : "-"}
-          />
-        </section>
+        {/* Account */}
+        <SettingsSection
+          icon={<User size={15} strokeWidth={1.5} />}
+          title="Account"
+          delay={1}
+        >
+          <InfoRow label="Email"   value={user?.primaryEmailAddress?.emailAddress ?? "—"} />
+          <InfoRow label="Status"  value={user ? "Active" : "Signed out"} />
+          <InfoRow label="Updated" value={user?.updatedAt ? user.updatedAt.toLocaleDateString() : "—"} />
+        </SettingsSection>
 
-        <section className="bg-[#12121a] border border-[#1e1e2e] rounded-xl p-5 space-y-4">
-          <h2 className="font-semibold flex items-center gap-2"><Sun size={16} /> Appearance</h2>
-          <div className="flex gap-3">
-            <ThemeButton current={theme} value="light" onClick={() => setTheme("light")} icon={<Sun size={14} />} />
-            <ThemeButton current={theme} value="dark" onClick={() => setTheme("dark")} icon={<Moon size={14} />} />
-            <ThemeButton current={theme} value="system" onClick={() => setTheme("system")} icon={<Settings size={14} />} />
+        {/* Appearance */}
+        <SettingsSection
+          icon={<Sun size={15} strokeWidth={1.5} />}
+          title="Appearance"
+          delay={2}
+        >
+          <div>
+            <p className="text-xs uppercase tracking-widest text-muted-foreground font-sans mb-3">Theme</p>
+            <div className="flex gap-2 flex-wrap">
+              {(["light", "dark", "system"] as const).map((t) => (
+                <ThemeButton
+                  key={t}
+                  current={theme}
+                  value={t}
+                  onClick={() => setTheme(t)}
+                  icon={
+                    t === "light"
+                      ? <Sun size={13} strokeWidth={1.5} />
+                      : t === "dark"
+                        ? <Moon size={13} strokeWidth={1.5} />
+                        : <Settings size={13} strokeWidth={1.5} />
+                  }
+                />
+              ))}
+            </div>
           </div>
-        </section>
+        </SettingsSection>
 
-        <section className="bg-[#12121a] border border-[#1e1e2e] rounded-xl p-5 space-y-4">
-          <h2 className="font-semibold flex items-center gap-2"><Database size={16} /> Trading Preferences</h2>
+        {/* Trading Preferences */}
+        <SettingsSection
+          icon={<Database size={15} strokeWidth={1.5} />}
+          title="Trading Preferences"
+          delay={3}
+        >
           <ToggleRow
             label="Notifications"
             description="Enable execution and system alerts"
@@ -95,45 +134,104 @@ export default function SettingsPage() {
               await persist({ llmRationaleEnabled: next });
             }}
           />
-          <Row label="Trading Mode" value={(userSettings?.tradingMode ?? "paper").toUpperCase()} />
-        </section>
+          <InfoRow
+            label="Trading Mode"
+            value={(userSettings?.tradingMode ?? "paper").toUpperCase()}
+          />
+        </SettingsSection>
 
-        <section className="bg-[#12121a] border border-[#1e1e2e] rounded-xl p-5 space-y-4">
-          <h2 className="font-semibold flex items-center gap-2"><Bell size={16} /> Session</h2>
+        {/* Session */}
+        <SettingsSection
+          icon={<Bell size={15} strokeWidth={1.5} />}
+          title="Session"
+          delay={4}
+        >
           {confirmingLogout ? (
-            <div className="space-y-3">
-              <p className="text-sm text-[#94a3b8]">Are you sure you want to sign out of this trading session?</p>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground font-sans leading-relaxed">
+                Are you sure you want to sign out of this trading session?
+              </p>
               <div className="flex gap-3">
-                <button onClick={handleLogout} className="rounded-md px-4 py-2 bg-[#ef4444] text-white">Confirm Sign Out</button>
-                <button onClick={() => setConfirmingLogout(false)} className="rounded-md px-4 py-2 bg-[#1e1e2e]">Cancel</button>
+                <button
+                  onClick={handleLogout}
+                  className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-semibold uppercase tracking-widest text-white transition-all duration-300 hover:opacity-90 font-sans"
+                  style={{ background: "var(--signal-sell)" }}
+                >
+                  Confirm Sign Out
+                </button>
+                <button
+                  onClick={() => setConfirmingLogout(false)}
+                  className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-semibold uppercase tracking-widest border border-border text-muted-foreground hover:text-foreground hover:border-foreground transition-all duration-300 font-sans"
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           ) : (
-            <button onClick={handleLogout} className="inline-flex items-center gap-2 rounded-md px-4 py-2 bg-[#ef4444] text-white">
-              <LogOut size={14} />
+            <button
+              onClick={() => setConfirmingLogout(true)}
+              className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-semibold uppercase tracking-widest border border-border text-muted-foreground hover:border-[var(--signal-sell)] hover:text-[var(--signal-sell)] transition-all duration-300 font-sans"
+            >
+              <LogOut size={14} strokeWidth={1.5} />
               Sign Out
             </button>
           )}
-        </section>
+        </SettingsSection>
       </main>
     </div>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+/* ─── Settings Section Card ──────────────────────────────────────── */
+function SettingsSection({
+  icon, title, children, delay = 1,
+}: {
+  icon: ReactNode;
+  title: string;
+  children: ReactNode;
+  delay?: number;
+}) {
   return (
-    <div className="flex items-center justify-between text-sm border-b border-[#1e1e2e] pb-2">
-      <span className="text-[#94a3b8]">{label}</span>
-      <span>{value}</span>
+    <section
+      className={[
+        "rounded-3xl border border-border bg-card p-7 shadow-botanical space-y-5 animate-fade-in",
+        `stagger-${delay}`,
+      ].join(" ")}
+    >
+      <div className="flex items-center gap-3">
+        <div
+          className="h-8 w-8 rounded-full flex items-center justify-center"
+          style={{ background: "hsl(var(--accent)/0.10)" }}
+        >
+          <span className="text-[hsl(var(--accent))]">{icon}</span>
+        </div>
+        <h2
+          className="font-semibold text-base"
+          style={{ fontFamily: "'Playfair Display', serif" }}
+        >
+          {title}
+        </h2>
+      </div>
+      <div className="space-y-4 pl-11">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+/* ─── Info Row ───────────────────────────────────────────────────── */
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between py-2.5 border-b border-border/60 last:border-0">
+      <span className="text-xs uppercase tracking-widest text-muted-foreground font-sans">{label}</span>
+      <span className="text-sm font-medium text-foreground font-sans">{value}</span>
     </div>
   );
 }
 
+/* ─── Theme Button ───────────────────────────────────────────────── */
 function ThemeButton({
-  current,
-  value,
-  onClick,
-  icon,
+  current, value, onClick, icon,
 }: {
   current: string;
   value: "light" | "dark" | "system";
@@ -145,9 +243,12 @@ function ThemeButton({
     <button
       onClick={onClick}
       className={[
-        "inline-flex items-center gap-2 px-3 py-2 rounded-md border",
-        active ? "bg-[#6366f1] border-[#6366f1]" : "bg-[#0d0d14] border-[#1e1e2e]",
+        "inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold uppercase tracking-wide border transition-all duration-300 font-sans",
+        active
+          ? "text-primary-foreground border-transparent"
+          : "border-border text-muted-foreground hover:border-[hsl(var(--accent))] hover:text-foreground",
       ].join(" ")}
+      style={active ? { background: "var(--botanical-forest)" } : {}}
     >
       {icon}
       {value[0].toUpperCase() + value.slice(1)}
@@ -155,11 +256,9 @@ function ThemeButton({
   );
 }
 
+/* ─── Toggle Row ─────────────────────────────────────────────────── */
 function ToggleRow({
-  label,
-  description,
-  checked,
-  onToggle,
+  label, description, checked, onToggle,
 }: {
   label: string;
   description: string;
@@ -167,22 +266,25 @@ function ToggleRow({
   onToggle: () => Promise<void>;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-[#1e1e2e] pb-3">
+    <div className="flex items-center justify-between gap-6 py-2.5 border-b border-border/60 last:border-0">
       <div>
-        <p className="text-sm">{label}</p>
-        <p className="text-xs text-[#94a3b8]">{description}</p>
+        <p className="text-sm font-medium text-foreground font-sans">{label}</p>
+        <p className="text-xs text-muted-foreground font-sans mt-0.5">{description}</p>
       </div>
       <button
         onClick={onToggle}
+        role="switch"
+        aria-checked={checked}
         className={[
-          "h-7 w-14 rounded-full relative transition-colors",
-          checked ? "bg-[#22c55e]" : "bg-[#334155]",
+          "relative h-7 w-[52px] flex-shrink-0 rounded-full transition-colors duration-300",
+          checked ? "" : "bg-border",
         ].join(" ")}
+        style={checked ? { background: "hsl(var(--accent))" } : {}}
       >
         <span
           className={[
-            "absolute top-1 h-5 w-5 rounded-full bg-white transition-all",
-            checked ? "left-8" : "left-1",
+            "absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-all duration-300",
+            checked ? "left-7" : "left-1",
           ].join(" ")}
         />
       </button>
