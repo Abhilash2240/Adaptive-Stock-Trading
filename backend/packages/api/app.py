@@ -325,7 +325,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             async for quote in provider.stream_quotes():
                 quote_payload = quote.model_dump(mode="json")
-                agent_service.on_quote(quote_payload)
+                agent_service.on_quote(quote_payload, user_id=user_id)
 
                 now = time.monotonic()
                 if user_portfolio is None or now - portfolio_refreshed_at >= 4.0:
@@ -336,6 +336,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 agent_action = agent_service.get_action(
                     symbol=quote_payload["symbol"],
                     portfolio=user_portfolio,
+                    user_id=user_id,
                 )
 
                 last_price = float(quote_payload.get("price", 0.0))
@@ -373,7 +374,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             action="agent_status_check",
             details={}
         )
-        return await agent.status()
+        return await agent.status(user_id=current_user.id)
 
     @app.post("/api/v1/agent/action", response_model=AgentAction)
     async def get_agent_action(
@@ -382,7 +383,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         current_user: AuthenticatedUser = Depends(get_current_user),
         agent: AgentService = Depends(get_agent_service),
     ) -> AgentAction:
-        return agent.get_action(symbol=symbol, portfolio=portfolio)
+        return agent.get_action(
+            symbol=symbol,
+            portfolio=portfolio,
+            user_id=current_user.id,
+        )
 
     @app.post("/api/v1/agent/rationale", response_model=dict)
     @limiter.limit("30/minute")
@@ -425,7 +430,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         rationale = await RationaleService(settings=settings).explain(
             symbol,
             action,
-            agent.get_indicator_snapshot(symbol),
+            agent.get_indicator_snapshot(symbol, user_id=current_user.id),
         )
         return {"rationale": rationale, "model": settings.openrouter_model}
 
