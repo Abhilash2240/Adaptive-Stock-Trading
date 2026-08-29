@@ -22,7 +22,7 @@ async def client():
 
     def _verify_clerk_token(token: str, settings):
         if token == "test-token":
-            return {"sub": "test-user", "email": "test@example.com"}
+            return {"sub": "test-user", "email": "test@example.com", "role": ["admin"]}
         raise HTTPException(status_code=401, detail="Invalid token")
 
     clerk_auth_module.verify_clerk_token = _verify_clerk_token
