@@ -42,8 +42,9 @@ Authentication uses Clerk's hosted sign-in experience. The frontend calls
    to issue the claims needed by the backend, including the `role` claim.
 4. Create `backend/.env` from `backend/.env.example` and set:
    ```dotenv
-   CLERK_DOMAIN=your-instance.clerk.accounts.dev
-   CLERK_ROLE_CLAIM=role
+   CLERK_SECRET_KEY=sk_test_your_secret_key_here
+   CLERK_JWT_TEMPLATE=backend
+   CLERK_FRONTEND_API=your-instance.clerk.accounts.dev
    ```
    The backend validates Clerk RS256 tokens through Clerk's JWKS endpoint; no
    locally generated signing secret is required.

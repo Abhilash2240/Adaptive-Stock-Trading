@@ -22,8 +22,7 @@ When `DATA_PROVIDER=polygon`, the backend polls Polygon's last-trade endpoint fo
 
 ## Clerk Configuration
 
-The backend uses Clerk for JWT authentication. Configure `CLERK_DOMAIN` in
-`.env` with the Clerk Frontend API URL, then create a JWT template named
-`backend` in the Clerk dashboard. The template should include the `role` claim
-used for administrator checks. Set `CLERK_ROLE_CLAIM=role` unless you choose a
-different claim name in the template.
+The backend uses Clerk for JWT authentication. Configure `CLERK_FRONTEND_API` in
+`.env` with the Clerk Frontend API URL and set `CLERK_SECRET_KEY`, then create a
+JWT template named `backend` in the Clerk dashboard. The template should
+include the `role` claim used for administrator checks.

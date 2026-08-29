@@ -170,7 +170,7 @@ export interface AgentRationaleResponse {
 export const apiBaseUrl = API_BASE;
 
 export function resolveWebSocketBase(): string {
-	const envUrl = (import.meta.env as any).VITE_WS_URL as string | undefined;
+	const envUrl = (import.meta.env as Record<string, string | undefined>).VITE_WS_URL;
 	if (envUrl) {
 		// Strip /ws/quotes path if present in env URL
 		return envUrl.replace(/\/ws\/quotes$/, "");
@@ -183,7 +183,7 @@ export function resolveWebSocketBase(): string {
 }
 
 export function resolveWebSocketUrl(): string {
-	const envUrl = (import.meta.env as any).VITE_WS_URL as string | undefined;
+	const envUrl = (import.meta.env as Record<string, string | undefined>).VITE_WS_URL;
 	if (envUrl) {
 		return envUrl;
 	}

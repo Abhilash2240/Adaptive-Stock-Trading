@@ -21,7 +21,7 @@ const navItems = [
   { key: "settings", label: "Settings", icon: Settings, route: "/settings" },
 ];
 
-export function Sidebar({ activeRoute, onNavigate, userEmail, onSignOut }: SidebarProps) {
+export function Sidebar({ activeRoute, onNavigate, userEmail: _userEmail, onSignOut: _onSignOut }: SidebarProps) {
   return (
     <aside className="fixed left-0 top-0 flex h-screen w-60 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="border-b border-sidebar-border px-5 py-5">

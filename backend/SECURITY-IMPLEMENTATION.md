@@ -74,8 +74,9 @@ This document outlines the comprehensive security measures implemented for the A
 ### Environment Variables
 ```bash
 # Clerk Configuration
-CLERK_DOMAIN=your-instance.clerk.accounts.dev
-CLERK_ROLE_CLAIM=role
+CLERK_SECRET_KEY=sk_test_your_secret_key_here
+CLERK_JWT_TEMPLATE=backend
+CLERK_FRONTEND_API=your-instance.clerk.accounts.dev
 
 # Environment
 ENVIRONMENT=development  # or production
@@ -86,7 +87,7 @@ RATE_LIMIT_ENABLED=true
 
 Configure a Clerk JWT template named `backend` to include the `role` claim.
 The backend validates Clerk RS256 tokens using the Clerk Frontend API URL's
-JWKS endpoint. Set `CLERK_DOMAIN` to that Frontend API URL.
+JWKS endpoint. Set `CLERK_FRONTEND_API` to that Frontend API URL.
 
 ### Development vs Production
 - **Development**: Relaxed CORS, detailed error messages
@@ -146,7 +147,7 @@ JWKS endpoint. Set `CLERK_DOMAIN` to that Frontend API URL.
 
 ## ⚠️ Critical Security Reminders
 
-1. **Clerk Configuration**: Set the production Frontend API URL, create the `backend` JWT template, and configure the role claim
+1. **Clerk Configuration**: Set the production Frontend API URL and secret key, create the `backend` JWT template, and configure the role claim
 2. **HTTPS Only**: Never run in production without TLS encryption
 3. **Database Security**: Ensure database credentials are secure
 4. **Regular Backups**: Maintain secure backups of user data

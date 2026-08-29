@@ -28,22 +28,22 @@ security_scheme = HTTPBearer(auto_error=True)
 
 
 @lru_cache(maxsize=4)
-def _get_jwks(domain: str) -> dict[str, Any]:
-    url = f"https://{domain}/.well-known/jwks.json"
+def _get_jwks(frontend_api: str) -> dict[str, Any]:
+    url = f"https://{frontend_api}/.well-known/jwks.json"
     response = requests.get(url, timeout=10)
     response.raise_for_status()
     return response.json()
 
 
 def verify_clerk_token(token: str, settings: Settings) -> dict:
-    if not settings.clerk_domain:
+    if not settings.clerk_secret_key or not settings.clerk_frontend_api:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Clerk is not configured",
         )
 
     try:
-        jwks = _get_jwks(settings.clerk_domain)
+        jwks = _get_jwks(settings.clerk_frontend_api)
         unverified_header = jwt.get_unverified_header(token)
 
         rsa_key: dict[str, str] = {}
@@ -68,7 +68,6 @@ def verify_clerk_token(token: str, settings: Settings) -> dict:
             token,
             rsa_key,
             algorithms=["RS256"],
-            issuer=f"https://{settings.clerk_domain}",
             options={"verify_aud": False},
         )
         return payload
@@ -93,13 +92,8 @@ async def get_current_user(
             detail="Invalid token payload",
         )
 
-    raw_roles = payload.get(settings.clerk_role_claim, [])
-    if isinstance(raw_roles, str):
-        roles = (raw_roles,)
-    elif isinstance(raw_roles, list):
-        roles = tuple(str(role) for role in raw_roles)
-    else:
-        roles = ()
+    raw_role = payload.get("role")
+    roles = (str(raw_role),) if isinstance(raw_role, str) and raw_role else ()
 
     return AuthenticatedUser(
         id=sub,

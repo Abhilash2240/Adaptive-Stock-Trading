@@ -24,10 +24,12 @@ services:
         sync: false       # set manually in Render dashboard
       - key: DATABASE_URL
         sync: false       # set manually — Neon PostgreSQL connection string
-      - key: CLERK_DOMAIN
+      - key: CLERK_SECRET_KEY
         sync: false       # set manually in Render dashboard
-      - key: CLERK_ROLE_CLAIM
-        value: role
+      - key: CLERK_JWT_TEMPLATE
+        value: backend
+      - key: CLERK_FRONTEND_API
+        sync: false       # set manually in Render dashboard
       - key: OPENROUTER_API_KEY
         sync: false       # set manually in Render dashboard
       - key: SYMBOLS

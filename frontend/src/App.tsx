@@ -1,7 +1,7 @@
-import React, { useEffect, type ReactNode } from "react";
+import React, { useEffect } from "react";
 import { Switch, Route, Redirect } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { useAuth, useClerk } from "@clerk/clerk-react";
+import { SignInButton, useAuth, useUser } from "@clerk/clerk-react";
 
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
@@ -63,7 +63,7 @@ function AppGate() {
 /* ─── Root ──────────────────────────────────────────────────────── */
 export default function App() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
-  const { openSignIn } = useClerk();
+  const { isLoaded: isUserLoaded } = useUser();
 
   useEffect(() => {
     setTokenGetter(async () => {
@@ -74,7 +74,7 @@ export default function App() {
     return () => setTokenGetter(null);
   }, [getToken]);
 
-  if (!isLoaded) {
+  if (!isLoaded || !isUserLoaded) {
     return (
       <div className="min-h-screen bg-background text-foreground grid place-items-center">
         <p className="text-sm text-muted-foreground">Loading authentication...</p>
@@ -90,12 +90,11 @@ export default function App() {
           <p className="text-sm text-muted-foreground">
             Please sign in to access real-time trading data and account settings.
           </p>
-          <button
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm"
-            onClick={() => openSignIn()}
-          >
-            Sign in
-          </button>
+          <SignInButton mode="redirect">
+            <button className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm">
+              Sign in
+            </button>
+          </SignInButton>
         </div>
       </div>
     );

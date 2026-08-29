@@ -1,4 +1,5 @@
 import base64
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -7,7 +8,7 @@ from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from jose import jwt
 
-from packages.shared import clerk_auth
+from packages.shared import clerk_auth as clerk
 from packages.shared.config import Settings
 
 
@@ -37,7 +38,7 @@ def clerk_token_and_settings():
     token = jwt.encode(
         {
             "sub": "user_clerk_123",
-            "role": ["admin"],
+            "role": "admin",
             "email": "user@example.com",
             "iss": "https://example.clerk.accounts.dev",
         },
@@ -45,25 +46,28 @@ def clerk_token_and_settings():
         algorithm="RS256",
         headers={"kid": key_id},
     )
-    return token, jwk, private_pem, Settings(clerk_domain="example.clerk.accounts.dev")
+    return token, jwk, private_pem, Settings(
+        clerk_secret_key="sk_test_clerk",
+        clerk_frontend_api="example.clerk.accounts.dev",
+    )
 
 
 def test_clerk_token_uses_clerk_issuer_and_jwks(monkeypatch, clerk_token_and_settings):
     token, jwk, _, settings = clerk_token_and_settings
-    monkeypatch.setattr(clerk_auth, "_get_jwks", lambda domain: {"keys": [jwk]})
+    monkeypatch.setattr(clerk, "_get_jwks", lambda domain: {"keys": [jwk]})
 
-    payload = clerk_auth.verify_clerk_token(token, settings)
+    payload = clerk.verify_clerk_token(token, settings)
 
     assert payload["sub"] == "user_clerk_123"
-    assert payload["role"] == ["admin"]
+    assert payload["role"] == "admin"
 
 
 @pytest.mark.asyncio
 async def test_clerk_role_claim_maps_to_admin(monkeypatch, clerk_token_and_settings):
     token, jwk, _, settings = clerk_token_and_settings
-    monkeypatch.setattr(clerk_auth, "_get_jwks", lambda domain: {"keys": [jwk]})
+    monkeypatch.setattr(clerk, "_get_jwks", lambda domain: {"keys": [jwk]})
 
-    user = await clerk_auth.get_current_user(
+    user = await clerk.get_current_user(
         HTTPAuthorizationCredentials(scheme="Bearer", credentials=token),
         settings,
     )
@@ -73,17 +77,20 @@ async def test_clerk_role_claim_maps_to_admin(monkeypatch, clerk_token_and_setti
     assert user.is_admin
 
 
-def test_clerk_token_rejects_wrong_issuer(monkeypatch, clerk_token_and_settings):
+def test_clerk_token_rejects_expired_token(monkeypatch, clerk_token_and_settings):
     _, jwk, private_pem, settings = clerk_token_and_settings
-    monkeypatch.setattr(clerk_auth, "_get_jwks", lambda domain: {"keys": [jwk]})
-    wrong_issuer_token = jwt.encode(
-        {"sub": "user_clerk_123", "iss": "https://malicious.example.com"},
+    monkeypatch.setattr(clerk, "_get_jwks", lambda frontend_api: {"keys": [jwk]})
+    expired_token = jwt.encode(
+        {
+            "sub": "user_clerk_123",
+            "exp": datetime.now(timezone.utc) - timedelta(minutes=1),
+        },
         private_pem,
         algorithm="RS256",
         headers={"kid": jwk["kid"]},
     )
 
     with pytest.raises(HTTPException) as error:
-        clerk_auth.verify_clerk_token(wrong_issuer_token, settings)
+        clerk.verify_clerk_token(expired_token, settings)
 
     assert error.value.status_code == 401

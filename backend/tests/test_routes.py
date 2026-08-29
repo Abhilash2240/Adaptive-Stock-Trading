@@ -11,7 +11,7 @@ from packages.api import create_app
 from packages.data.provider import get_data_provider
 from packages.db.engine import get_session_ctx
 from packages.db.models import AgentActionDB, PortfolioStateDB, UserDB
-from packages.shared import clerk_auth as clerk_auth_module
+from packages.shared import clerk_auth as clerk_module
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -25,7 +25,7 @@ async def client():
             return {"sub": "test-user", "email": "test@example.com", "role": ["admin"]}
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    clerk_auth_module.verify_clerk_token = _verify_clerk_token
+    clerk_module.verify_clerk_token = _verify_clerk_token
 
     async with get_session_ctx() as session:
         existing = await session.get(UserDB, "test-user")
