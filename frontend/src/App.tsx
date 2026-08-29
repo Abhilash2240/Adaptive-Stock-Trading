@@ -81,8 +81,8 @@ export default function App() {
 
   useEffect(() => {
     setTokenGetter(async () => {
-      const token = await getToken({ template: "backend" });
-      if (!token) throw new Error("Missing Clerk backend token");
+      const token = await getToken();
+      if (!token) throw new Error("Missing Clerk session token");
       return token;
     });
     return () => setTokenGetter(null);
