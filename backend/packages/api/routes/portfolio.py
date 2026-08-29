@@ -244,7 +244,7 @@ async def log_trade(
             raise HTTPException(status_code=400, detail="Insufficient shares to sell")
         portfolio_row.cash = float(portfolio_row.cash) + cost
 
-    portfolio_row.updated_at = datetime.utcnow()
+    portfolio_row.updated_at = datetime.now(timezone.utc)
     session.add(portfolio_row)
 
     trade = AgentActionDB(
