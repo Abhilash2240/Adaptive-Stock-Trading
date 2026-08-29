@@ -34,6 +34,7 @@ services:
         sync: false       # set manually in Render dashboard
       - key: SYMBOLS
         value: AAPL,MSFT,TSLA,GOOGL,AMZN
+      # Replace this placeholder with the real Vercel URL before or immediately after deploy.
       - key: ALLOWED_ORIGINS
         value: https://your-app.vercel.app,http://localhost:5173,http://localhost:3000
       - key: RATE_LIMIT_ENABLED
