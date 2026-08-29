@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     model_bucket: str | None = None
     agent_model_name: str = "ppo-default"
     agent_train_interval: int = 32
+    agent_idle_timeout_seconds: float = 1800.0
+    agent_cleanup_interval_seconds: float = 300.0
     
     # Security Configuration
     jwt_algorithm: str = "HS256"

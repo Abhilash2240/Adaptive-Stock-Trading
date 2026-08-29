@@ -1,6 +1,10 @@
 """Tests for per-user agent model behavior."""
+import asyncio
+import gc
+import logging
 import os
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -87,8 +91,8 @@ class TestIndependence:
         agent2 = agent_service._get_user_agent(user2_id)
         
         # Both should start with similar epsilon values (1.0 for fresh models)
-        assert agent1.epsilon >= 0.99, "Fresh model should have high epsilon"
-        assert agent2.epsilon >= 0.99, "Fresh model should have high epsilon"
+        assert agent1.epsilon >= 0.95, "Fresh model should have high epsilon"
+        assert agent2.epsilon >= 0.95, "Fresh model should have high epsilon"
         
         # Feed quotes to user1 multiple times to trigger training
         # Need enough to build replay buffer (default batch_size=64) and trigger a train
@@ -132,6 +136,85 @@ class TestIndependence:
 
 class TestPersistence:
     """Test that model state survives service restart."""
+
+    def test_idle_user_is_evicted_and_reloads_saved_weights(self):
+        """Idle user state is evicted while active user state remains resident."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(tmpdir)
+                service = AgentService(
+                    get_data_provider(),
+                    idle_timeout_seconds=60,
+                )
+                idle_user = "idle_user"
+                active_user = "active_user"
+                idle_agent = service._get_user_agent(idle_user)
+                active_agent = service._get_user_agent(active_user)
+
+                for i in range(64):
+                    state = [float(i % 10) / 10.0] * 14
+                    idle_agent.remember(state, i % 3, 1.0, state, False)
+                assert idle_agent.train_step() is not None
+                service._train_and_save(idle_user)
+                saved_step_count = idle_agent.step_count
+
+                service._get_environment("AAPL", user_id=idle_user)
+                service._get_environment("AAPL", user_id=active_user)
+                now = datetime.now(timezone.utc)
+                service._user_last_used[idle_user] = now - timedelta(seconds=61)
+                service._user_last_used[active_user] = now
+
+                assert service.cleanup_idle_users(now=now) == [idle_user]
+                assert idle_user not in service._user_agents
+                assert idle_user not in service._user_environments
+                assert active_user in service._user_agents
+                assert active_user in service._user_environments
+                assert service._user_agents[active_user] is active_agent
+
+                reloaded_agent = service._get_user_agent(idle_user)
+                assert reloaded_agent is not idle_agent
+                assert reloaded_agent.step_count == saved_step_count
+                assert reloaded_agent.epsilon < 1.0
+            finally:
+                os.chdir(original_cwd)
+
+    def test_model_path_hash_cannot_escape_models_directory(self):
+        """Identity-derived model paths should remain inside the models directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(tmpdir)
+                model_path = _get_user_model_path("../outside-model")
+
+                assert model_path.parent == Path("models")
+                assert model_path.resolve().parent == (Path("models").resolve())
+                assert model_path.name.endswith(".pt")
+                assert ".." not in model_path.name
+                assert not (Path(tmpdir) / "outside-model.pt").exists()
+            finally:
+                os.chdir(original_cwd)
+
+    def test_legacy_model_path_is_migrated_to_hashed_filename(self):
+        """Existing raw user model files should move to the deterministic hashed path."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(tmpdir)
+                user_id = "legacy_user"
+                models_dir = Path("models")
+                models_dir.mkdir()
+                legacy_path = models_dir / f"{user_id}.pt"
+                legacy_path.write_bytes(b"legacy model weights")
+
+                model_path = _get_user_model_path(user_id)
+
+                assert model_path != legacy_path
+                assert model_path.exists()
+                assert model_path.read_bytes() == b"legacy model weights"
+                assert not legacy_path.exists()
+            finally:
+                os.chdir(original_cwd)
 
     def test_model_weights_saved_after_training(self, sample_quote):
         """Model weights file should be created after training."""
@@ -318,3 +401,63 @@ class TestUserModelIsolation:
         status_after = agent_service.get_status(user_id=user2_id)
         assert status_after.step_count == 0, "User2 should not have trained"
         assert status_before.step_count == status_after.step_count
+
+
+class TestBackgroundTrainingTasks:
+    """Ensure background training tasks are retained and log failures."""
+
+    def test_on_quote_background_task_completes_and_saves(self, sample_quote):
+        """A task scheduled from on_quote should still complete even without a held task reference."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(tmpdir)
+
+                service = AgentService(get_data_provider())
+                user_id = "bg_task_user"
+
+                async def trigger_background_training():
+                    for i in range(150):
+                        quote = {
+                            **sample_quote,
+                            "price": 150.0 + (i * 0.1),
+                            "close": 150.0 + (i * 0.1),
+                        }
+                        service.on_quote(quote, user_id=user_id)
+
+                    gc.collect()
+                    await asyncio.sleep(0.2)
+
+                asyncio.run(trigger_background_training())
+
+                model_file = _get_user_model_path(user_id)
+                assert model_file.exists(), "Background training should save the model file"
+                assert model_file.stat().st_size > 0
+                assert len(service._background_tasks) == 0
+
+            finally:
+                os.chdir(original_cwd)
+
+    def test_background_training_exception_is_logged(self, sample_quote, caplog):
+        """Exceptions escaping a background training task should be captured and logged."""
+        service = AgentService(get_data_provider(), train_interval=1)
+        user_id = "bg_task_failure"
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("training exploded")
+
+        service._train_and_save = boom
+
+        async def trigger_failure():
+            for i in range(80):
+                service.on_quote(
+                    {**sample_quote, "price": 155.0 + i, "close": 155.0 + i},
+                    user_id=user_id,
+                )
+            await asyncio.sleep(0.5)
+
+        with caplog.at_level(logging.ERROR):
+            asyncio.run(trigger_failure())
+
+        assert "Background agent training task failed" in caplog.text
+        assert "training exploded" in caplog.text

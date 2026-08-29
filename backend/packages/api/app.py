@@ -82,8 +82,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         app.state.data_provider = provider
         app.state.agent_service = agent
+        agent.start_cleanup_task()
         yield
     finally:
+        await agent.stop_cleanup_task()
         await provider.stop()
         reset_agent_service()
         # Close database connections
@@ -461,6 +463,8 @@ def get_agent_service() -> AgentService:
             provider,
             model_version=settings.agent_model_name,
             train_interval=settings.agent_train_interval,
+            idle_timeout_seconds=settings.agent_idle_timeout_seconds,
+            cleanup_interval_seconds=settings.agent_cleanup_interval_seconds,
         )
     return _agent_service
 
