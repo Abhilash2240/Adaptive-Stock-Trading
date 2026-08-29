@@ -1,7 +1,7 @@
 import React, { useEffect, type ReactNode } from "react";
 import { Switch, Route, Redirect } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { useAuth0 } from "@auth0/auth0-react";
+import { useAuth, useClerk } from "@clerk/clerk-react";
 
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
@@ -62,20 +62,19 @@ function AppGate() {
 
 /* ─── Root ──────────────────────────────────────────────────────── */
 export default function App() {
-  const { getAccessTokenSilently, isAuthenticated, isLoading, loginWithRedirect } = useAuth0();
+  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const { openSignIn } = useClerk();
 
   useEffect(() => {
-    setTokenGetter(() =>
-      getAccessTokenSilently({
-        authorizationParams: {
-          audience: import.meta.env.VITE_AUTH0_AUDIENCE,
-        },
-      }),
-    );
+    setTokenGetter(async () => {
+      const token = await getToken({ template: "backend" });
+      if (!token) throw new Error("Missing Clerk backend token");
+      return token;
+    });
     return () => setTokenGetter(null);
-  }, [getAccessTokenSilently]);
+  }, [getToken]);
 
-  if (isLoading) {
+  if (!isLoaded) {
     return (
       <div className="min-h-screen bg-background text-foreground grid place-items-center">
         <p className="text-sm text-muted-foreground">Loading authentication...</p>
@@ -83,7 +82,7 @@ export default function App() {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!isSignedIn) {
     return (
       <div className="min-h-screen bg-background text-foreground grid place-items-center px-6">
         <div className="rounded-xl border border-border bg-card p-6 text-center space-y-3 max-w-md w-full">
@@ -93,13 +92,7 @@ export default function App() {
           </p>
           <button
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm"
-            onClick={() =>
-              loginWithRedirect({
-                authorizationParams: {
-                  audience: import.meta.env.VITE_AUTH0_AUDIENCE,
-                },
-              })
-            }
+            onClick={() => openSignIn()}
           >
             Sign in
           </button>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useState } from "react";
-import { useAuth0 } from "@auth0/auth0-react";
+import { useAuth } from "@clerk/clerk-react";
 import { resolveWebSocketBase } from "@/hooks/use-api";
 
 export interface LiveTick {
@@ -25,7 +25,7 @@ export function useTradingWebSocket({
   onTick,
   enabled = true,
 }: UseTradingWebSocketOptions) {
-  const { getAccessTokenSilently } = useAuth0();
+  const { getToken } = useAuth();
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onTickRef = useRef(onTick);
@@ -37,11 +37,7 @@ export function useTradingWebSocket({
 
     let token = "";
     try {
-      token = await getAccessTokenSilently({
-        authorizationParams: {
-          audience: import.meta.env.VITE_AUTH0_AUDIENCE,
-        },
-      });
+      token = (await getToken({ template: "backend" })) ?? "";
       if (!token) {
         console.error("[WS] token fetch returned empty token");
         return;
@@ -95,7 +91,7 @@ export function useTradingWebSocket({
     };
 
     wsRef.current = ws;
-  }, [enabled, getAccessTokenSilently]);
+  }, [enabled, getToken]);
 
   useEffect(() => {
     void connect();

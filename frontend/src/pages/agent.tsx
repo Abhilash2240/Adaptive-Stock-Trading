@@ -1,17 +1,17 @@
 import { ReactNode, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { Activity, Bot, Loader2, Play, Zap } from "lucide-react";
-import { useAuth0 } from "@auth0/auth0-react";
+import { useUser } from "@clerk/clerk-react";
 
 import { Sidebar } from "@/components/Sidebar";
 import { useAgentRationale, useAgentStatus, useSettings, useTrainStep } from "@/hooks/use-api";
 
 export default function AgentPage() {
   const [location, setLocation] = useLocation();
-  const { user } = useAuth0();
+  const { user } = useUser();
 
   const { data: status, isLoading, refetch } = useAgentStatus(true);
-  const { data: userSettings } = useSettings(user?.sub ?? "");
+  const { data: userSettings } = useSettings(user?.id ?? "");
   const train = useTrainStep();
   const rationaleEnabled = userSettings?.llmRationaleEnabled === true;
   const decisionSymbol = status?.last_action?.symbol ?? "";

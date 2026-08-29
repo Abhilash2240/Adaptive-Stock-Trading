@@ -21,11 +21,11 @@ export function setTokenGetter(fn: (() => Promise<string>) | null): void {
 
 export async function getAccessTokenForApi(): Promise<string> {
 	if (!tokenGetter) {
-		throw new Error("Auth0 token getter is not configured");
+		throw new Error("Clerk token getter is not configured");
 	}
 	const token = await tokenGetter();
 	if (!token) {
-		throw new Error("Missing Auth0 access token");
+		throw new Error("Missing Clerk access token");
 	}
 	return token;
 }

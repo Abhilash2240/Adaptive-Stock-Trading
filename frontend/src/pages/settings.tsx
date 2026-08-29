@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { Bell, Database, LogOut, Moon, Settings, Sun, User } from "lucide-react";
-import { useAuth0 } from "@auth0/auth0-react";
+import { useClerk, useUser } from "@clerk/clerk-react";
 
 import { Sidebar } from "@/components/Sidebar";
 import { useTheme } from "@/components/theme-provider";
@@ -9,11 +9,12 @@ import { SaveSettingsPayload, useBackendReady, useSaveSettings, useSettings } fr
 
 export default function SettingsPage() {
   const [location, setLocation] = useLocation();
-  const { user, logout } = useAuth0();
+  const { user } = useUser();
+  const { signOut } = useClerk();
   const { theme, setTheme } = useTheme();
   const { data: backendReady } = useBackendReady();
   const providerName = backendReady?.summary?.provider ?? "--";
-  const userId = user?.sub ?? "";
+  const userId = user?.id ?? "";
   const { data: userSettings } = useSettings(userId);
   const saveSettings = useSaveSettings();
   const [confirmingLogout, setConfirmingLogout] = useState(false);
@@ -32,11 +33,7 @@ export default function SettingsPage() {
   }, [userSettings]);
 
   const handleLogout = () => {
-    logout({
-      logoutParams: {
-        returnTo: window.location.origin,
-      },
-    });
+    void signOut({ redirectUrl: window.location.origin });
   };
 
   const persist = async (partial: Partial<SaveSettingsPayload>) => {
@@ -59,11 +56,11 @@ export default function SettingsPage() {
 
         <section className="bg-[#12121a] border border-[#1e1e2e] rounded-xl p-5 space-y-4">
           <h2 className="font-semibold flex items-center gap-2"><User size={16} /> Account</h2>
-          <Row label="User" value={user?.email ?? "-"} />
+          <Row label="User" value={user?.primaryEmailAddress?.emailAddress ?? "-"} />
           <Row label="Status" value={user ? "Active" : "Signed out"} />
           <Row
             label="Created"
-            value={user?.updated_at ? new Date(user.updated_at).toLocaleDateString() : "-"}
+            value={user?.updatedAt ? user.updatedAt.toLocaleDateString() : "-"}
           />
         </section>
 
