@@ -6,7 +6,12 @@ services:
     name: adaptive-stock-trading-api
     runtime: docker
     dockerfilePath: ./deployment/Dockerfile.backend
-    plan: free            # change to "starter" for no cold starts
+    # Persistent disks require a paid service plan; change free to starter before deploying.
+    plan: free            # change to "starter" for persistent model storage and no cold starts
+    disk:
+      name: agent-models
+      mountPath: /app/backend/models
+      sizeGB: 1
     healthCheckPath: /api/v1/status
     envVars:
       - key: ENVIRONMENT
