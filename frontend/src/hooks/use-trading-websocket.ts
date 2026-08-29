@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useState } from "react";
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth } from "@clerk/react";
 import { resolveWebSocketBase } from "@/hooks/use-api";
 
 export interface LiveTick {

@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { Switch, Route, Redirect } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { SignInButton, useAuth, useUser } from "@clerk/clerk-react";
+import { SignInButton, useAuth, useUser } from "@clerk/react";
 
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
@@ -90,7 +90,7 @@ export default function App() {
           <p className="text-sm text-muted-foreground">
             Please sign in to access real-time trading data and account settings.
           </p>
-          <SignInButton mode="redirect">
+          <SignInButton mode="modal">
             <button className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm">
               Sign in
             </button>

@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { Bell, Database, LogOut, Moon, Settings, Sun, User } from "lucide-react";
-import { useClerk, useUser } from "@clerk/clerk-react";
+import { useClerk, useUser } from "@clerk/react";
 
 import { Sidebar } from "@/components/Sidebar";
 import { useTheme } from "@/components/theme-provider";

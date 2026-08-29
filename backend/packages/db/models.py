@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlmodel import Field, SQLModel, Column, Relationship
-from sqlalchemy import Text, DateTime, Index, JSON, BigInteger, func
+from sqlalchemy import Text, DateTime, Index, JSON, BigInteger, Integer, func
 
 
 # --------------------------------------------------------------------------- #
@@ -76,7 +76,11 @@ class QuoteDB(SQLModel, table=True):
 
     id: Optional[int] = Field(
         default=None,
-        sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
+        sa_column=Column(
+            BigInteger().with_variant(Integer(), "sqlite"),
+            primary_key=True,
+            autoincrement=True,
+        ),
     )
     symbol: str = Field(max_length=10, index=True)
     price: float
@@ -96,7 +100,11 @@ class OHLCVDB(SQLModel, table=True):
 
     id: Optional[int] = Field(
         default=None,
-        sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
+        sa_column=Column(
+            BigInteger().with_variant(Integer(), "sqlite"),
+            primary_key=True,
+            autoincrement=True,
+        ),
     )
     symbol: str = Field(max_length=10, index=True)
     open: float
@@ -182,7 +190,11 @@ class AgentActionDB(SQLModel, table=True):
 
     id: Optional[int] = Field(
         default=None,
-        sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
+        sa_column=Column(
+            BigInteger().with_variant(Integer(), "sqlite"),
+            primary_key=True,
+            autoincrement=True,
+        ),
     )
     user_id: Optional[str] = Field(default=None, index=True)
     symbol: str = Field(max_length=10, index=True)
@@ -250,7 +262,11 @@ class TrainingMetricDB(SQLModel, table=True):
 
     id: Optional[int] = Field(
         default=None,
-        sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
+        sa_column=Column(
+            BigInteger().with_variant(Integer(), "sqlite"),
+            primary_key=True,
+            autoincrement=True,
+        ),
     )
     run_id: str = Field(foreign_key="training_runs.id", index=True)
     episode: int
@@ -304,7 +320,11 @@ class AuditLogDB(SQLModel, table=True):
 
     id: Optional[int] = Field(
         default=None,
-        sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
+        sa_column=Column(
+            BigInteger().with_variant(Integer(), "sqlite"),
+            primary_key=True,
+            autoincrement=True,
+        ),
     )
     event_type: str = Field(max_length=50, index=True)  # AUTH | API_ACCESS | TRADE | etc.
     user_id: Optional[str] = Field(default=None, max_length=100)

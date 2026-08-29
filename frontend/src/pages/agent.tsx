@@ -1,7 +1,7 @@
 import { ReactNode, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { Activity, Bot, Loader2, Play, Zap } from "lucide-react";
-import { useUser } from "@clerk/clerk-react";
+import { useUser } from "@clerk/react";
 
 import { Sidebar } from "@/components/Sidebar";
 import { useAgentRationale, useAgentStatus, useSettings, useTrainStep } from "@/hooks/use-api";
