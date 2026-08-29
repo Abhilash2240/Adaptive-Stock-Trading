@@ -24,7 +24,7 @@ class AuthenticatedUser:
         return "admin" in self.roles
 
 
-security_scheme = HTTPBearer(auto_error=True)
+security_scheme = HTTPBearer(auto_error=False)
 
 
 @lru_cache(maxsize=4)
@@ -81,9 +81,14 @@ def verify_clerk_token(token: str, settings: Settings) -> dict:
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme),
     settings: Settings = Depends(get_settings),
 ) -> AuthenticatedUser:
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authenticated",
+        )
     payload = verify_clerk_token(credentials.credentials, settings)
     sub = str(payload.get("sub") or "")
     if not sub:
