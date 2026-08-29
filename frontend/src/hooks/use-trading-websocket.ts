@@ -54,19 +54,28 @@ export function useTradingWebSocket({
     const wsBase = resolveWebSocketBase();
     const endpoint = `${wsBase}/ws/quotes`;
 
-    const ws = new WebSocket(
-      `${endpoint}?token=${encodeURIComponent(token)}`
-    );
+    const ws = new WebSocket(endpoint);
+    let authAcknowledged = false;
 
     ws.onopen = () => {
       console.info("[WS] connected to /ws/quotes");
-      setConnected(true);
+      ws.send(JSON.stringify({ type: "auth", token }));
     };
 
     ws.onmessage = (event) => {
       try {
-        const data: LiveTick = JSON.parse(event.data);
-        onTickRef.current(data);
+        const data = JSON.parse(event.data) as Record<string, unknown>;
+        if (!authAcknowledged) {
+          if (data.type !== "auth_ack" || data.status !== "authenticated") {
+            ws.close(4401, "Authentication acknowledgement required");
+            return;
+          }
+          authAcknowledged = true;
+          setConnected(true);
+          return;
+        }
+        const tick = data as unknown as LiveTick;
+        onTickRef.current(tick);
       } catch {
         // skip malformed frames
       }

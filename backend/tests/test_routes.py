@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import pytest
 import pytest_asyncio
 from fastapi import HTTPException
+from starlette.websockets import WebSocketDisconnect
 from httpx import ASGITransport, AsyncClient
 from starlette.testclient import TestClient
 
@@ -286,12 +287,30 @@ async def test_websocket_broadcast_uses_user_portfolio(client, auth_headers, mon
 
     with TestClient(create_app(), base_url="http://localhost") as test_client:
         with test_client.websocket_connect(
-            "/ws/quotes?token=test-token",
+            "/ws/quotes",
             headers={"host": "localhost"},
         ) as websocket:
+            websocket.send_json({"type": "auth", "token": "test-token"})
+            assert websocket.receive_json() == {
+                "type": "auth_ack",
+                "status": "authenticated",
+            }
             message = websocket.receive_json()
 
     portfolio_payload = message["portfolio"]
     assert portfolio_payload["position_flag"] == 1
     assert portfolio_payload["cash"] == 9_800.0
     assert portfolio_payload["trade_count_today"] >= 1
+
+
+async def test_websocket_without_auth_message_is_closed(client):
+    """A client that never authenticates should not receive quote data."""
+    with TestClient(create_app(), base_url="http://localhost") as test_client:
+        with test_client.websocket_connect(
+            "/ws/quotes",
+            headers={"host": "localhost"},
+        ) as websocket:
+            with pytest.raises(WebSocketDisconnect) as disconnect:
+                websocket.receive_json()
+
+    assert disconnect.value.code == 4401

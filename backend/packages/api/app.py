@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+import asyncio
 import logging
 import time
 
@@ -292,21 +293,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         provider: DataProvider = Depends(get_data_provider),
     ) -> None:
         endpoint = "/ws/quotes"
-        
-        # WebSocket authentication - check for token in query params
-        token = websocket.query_params.get("token")
-        if not token:
-            await websocket.accept()
-            await websocket.close(code=4001, reason="Authentication required")
-            return
-
+        await websocket.accept()
         try:
+            auth_message = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
+            if (
+                not isinstance(auth_message, dict)
+                or auth_message.get("type") != "auth"
+                or not isinstance(auth_message.get("token"), str)
+                or not auth_message["token"]
+            ):
+                await websocket.close(code=4401, reason="Authentication required")
+                return
+
+            token = auth_message["token"]
             payload = verify_auth0_token(token, resolved_settings)
             user_id = str(payload.get("sub") or "")
 
             if not user_id:
-                await websocket.accept()
-                await websocket.close(code=4001, reason="Invalid authentication")
+                await websocket.close(code=4401, reason="Invalid authentication")
                 return
                 
             await audit_logger.log_user_action(
@@ -314,12 +318,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 action="websocket_connect",
                 details={"endpoint": endpoint}
             )
-        except Exception as e:
-            await websocket.accept()
-            await websocket.close(code=4001, reason="Authentication failed")
+            await websocket.send_json({"type": "auth_ack", "status": "authenticated"})
+        except (asyncio.TimeoutError, ValueError, WebSocketDisconnect):
+            await websocket.close(code=4401, reason="Authentication required")
             return
-            
-        await websocket.accept()
+        except Exception:
+            await websocket.close(code=4401, reason="Authentication failed")
+            return
+
         websocket_connected(endpoint)
         agent_service = get_agent_service()
         user_portfolio: dict[str, float | int] | None = None
