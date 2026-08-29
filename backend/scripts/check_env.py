@@ -40,7 +40,7 @@ def main():
 
     if missing:
         print(f"\nX Missing required variables: {', '.join(missing)}")
-        print("Set them in Railway dashboard -> Variables tab")
+        print("Set them in the Render dashboard -> Environment variables")
         sys.exit(1)
 
     print("\n+ All required environment variables are set")

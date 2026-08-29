@@ -1,4 +1,4 @@
-# ── Backend-only Dockerfile for Render / Railway / Fly.io ──
+# ── Backend-only Dockerfile for Render ──
 # Runs the FastAPI + Python backend as a standalone service.
 
 FROM python:3.11-slim AS runtime

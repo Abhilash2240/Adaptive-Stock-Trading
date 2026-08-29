@@ -112,7 +112,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allowed_hosts=[
             "localhost",
             "127.0.0.1",
-            "*.railway.app",
+            "*.onrender.com",
             "*.vercel.app",
             # add your production domain here when known
         ],
