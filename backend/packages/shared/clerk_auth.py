@@ -35,15 +35,15 @@ def _get_jwks(domain: str) -> dict[str, Any]:
     return response.json()
 
 
-def verify_auth0_token(token: str, settings: Settings) -> dict:
-    if not settings.auth0_domain or not settings.auth0_audience:
+def verify_clerk_token(token: str, settings: Settings) -> dict:
+    if not settings.clerk_domain:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Auth0 is not configured",
+            detail="Clerk is not configured",
         )
 
     try:
-        jwks = _get_jwks(settings.auth0_domain)
+        jwks = _get_jwks(settings.clerk_domain)
         unverified_header = jwt.get_unverified_header(token)
 
         rsa_key: dict[str, str] = {}
@@ -68,8 +68,8 @@ def verify_auth0_token(token: str, settings: Settings) -> dict:
             token,
             rsa_key,
             algorithms=["RS256"],
-            audience=settings.auth0_audience,
-            issuer=f"https://{settings.auth0_domain}/",
+            issuer=f"https://{settings.clerk_domain}",
+            options={"verify_aud": False},
         )
         return payload
     except HTTPException:
@@ -85,7 +85,7 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
     settings: Settings = Depends(get_settings),
 ) -> AuthenticatedUser:
-    payload = verify_auth0_token(credentials.credentials, settings)
+    payload = verify_clerk_token(credentials.credentials, settings)
     sub = str(payload.get("sub") or "")
     if not sub:
         raise HTTPException(
@@ -93,7 +93,7 @@ async def get_current_user(
             detail="Invalid token payload",
         )
 
-    raw_roles = payload.get(settings.auth0_roles_claim, [])
+    raw_roles = payload.get(settings.clerk_role_claim, [])
     if isinstance(raw_roles, str):
         roles = (raw_roles,)
     elif isinstance(raw_roles, list):

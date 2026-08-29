@@ -11,7 +11,7 @@ from packages.api import create_app
 from packages.data.provider import get_data_provider
 from packages.db.engine import get_session_ctx
 from packages.db.models import AgentActionDB, PortfolioStateDB, UserDB
-from packages.shared import auth0 as auth0_module
+from packages.shared import clerk_auth as clerk_auth_module
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -20,12 +20,12 @@ pytestmark = pytest.mark.asyncio(loop_scope="module")
 async def client():
     app = create_app()
 
-    def _verify_auth0_token(token: str, settings):
+    def _verify_clerk_token(token: str, settings):
         if token == "test-token":
             return {"sub": "test-user", "email": "test@example.com"}
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    auth0_module.verify_auth0_token = _verify_auth0_token
+    clerk_auth_module.verify_clerk_token = _verify_clerk_token
 
     async with get_session_ctx() as session:
         existing = await session.get(UserDB, "test-user")
@@ -258,7 +258,7 @@ async def test_websocket_broadcast_uses_user_portfolio(client, auth_headers, mon
     api_module = importlib.import_module("packages.api.app")
     monkeypatch.setattr(
         api_module,
-        "verify_auth0_token",
+        "verify_clerk_token",
         lambda token, settings: {"sub": "test-user", "email": "test@example.com"},
     )
 

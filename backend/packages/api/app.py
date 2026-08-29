@@ -25,11 +25,11 @@ from packages.db.engine import get_session_ctx
 from packages.db.models import AgentActionDB
 from packages.db.repositories import UserSettingsRepository
 from packages.shared.config import Settings, get_settings
-from packages.shared.auth0 import (
+from packages.shared.clerk_auth import (
     AuthenticatedUser,
     get_current_user,
     require_admin,
-    verify_auth0_token,
+    verify_clerk_token,
 )
 from packages.shared.metrics import websocket_closed, websocket_connected, websocket_message_sent
 from packages.shared.schemas import (
@@ -306,7 +306,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return
 
             token = auth_message["token"]
-            payload = verify_auth0_token(token, resolved_settings)
+            payload = verify_clerk_token(token, resolved_settings)
             user_id = str(payload.get("sub") or "")
 
             if not user_id:

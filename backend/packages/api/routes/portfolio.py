@@ -13,7 +13,7 @@ from packages.shared.schemas import (
     Position,
     TradeRecord,
 )
-from packages.shared.auth0 import AuthenticatedUser, get_current_user
+from packages.shared.clerk_auth import AuthenticatedUser, get_current_user
 
 router = APIRouter(tags=["portfolio"])
 
