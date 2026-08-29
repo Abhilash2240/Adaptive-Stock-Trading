@@ -37,7 +37,7 @@ export function useTradingWebSocket({
 
     let token = "";
     try {
-      token = (await getToken({ template: "backend" })) ?? "";
+      token = (await getToken()) ?? "";
       if (!token) {
         console.error("[WS] token fetch returned empty token");
         return;
