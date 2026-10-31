@@ -43,7 +43,7 @@ def test_explain_posts_openrouter_request():
     assert requests[0].headers["Authorization"] == "Bearer test-key"
     assert requests[0].headers["HTTP-Referer"] == "https://adaptive-stock-trading.app"
     assert requests[0].url.path == "/api/v1/chat/completions"
-    assert json.loads(requests[0].content)["model"] == "nvidia/nemotron-3-ultra-550b"
+    assert json.loads(requests[0].content)["model"] == settings.openrouter_model
 
 
 def test_explain_returns_none_without_api_key():
