@@ -194,6 +194,31 @@ export function resolveWebSocketUrl(): string {
 	return "ws://localhost:8001/ws/quotes";
 }
 
+export interface StockQuoteResponse {
+	symbol: string;
+	name?: string;
+	price: number;
+	open: number;
+	high: number;
+	low: number;
+	volume: number;
+	change: number;
+	percent_change: number;
+	currency: string;
+	exchange?: string;
+	provider: string;
+}
+
+export function useStockQuote(symbol: string) {
+	return useQuery<StockQuoteResponse>({
+		queryKey: ["stock-quote", symbol],
+		queryFn: () => requestJson<StockQuoteResponse>(`/api/v1/quotes?symbol=${encodeURIComponent(symbol)}`),
+		enabled: Boolean(symbol),
+		staleTime: 30000,
+		retry: 1,
+	});
+}
+
 export function useBackendReady() {
 	return useQuery<BackendReadyResponse>({
 		queryKey: ["backend-ready"],
@@ -332,3 +357,129 @@ export function useCreateTrade() {
 	});
 }
 
+
+// ---------------------------------------------------------------------------
+// Stock price DB storage + daily RL training hooks
+// ---------------------------------------------------------------------------
+
+export interface SyncStockPricesResponse {
+	status: string;
+	symbol: string;
+	synced_days: number;
+}
+
+export interface StockHistoryResponse {
+	symbol: string;
+	count: number;
+	prices: Array<{
+		price: number;
+		close?: number;
+		open?: number;
+		high?: number;
+		low?: number;
+		volume?: number;
+		timestamp: string;
+	}>;
+}
+
+export interface StockDbStatsResponse {
+	quotes_count: number;
+	ohlcv_count: number;
+	symbols: string[];
+	oldest_quote?: string;
+	newest_quote?: string;
+}
+
+export interface DailyTrainResult {
+	steps: number;
+	total_reward: number;
+	mean_loss?: number;
+	epsilon: number;
+	buffer_size: number;
+}
+
+export interface DailyTrainResponse {
+	status: string;
+	message: string;
+	symbol?: string;
+	training_results: DailyTrainResult;
+}
+
+export interface TrainingRunRecord {
+	id: number;
+	user_id: string;
+	symbol: string;
+	status: string;
+	steps: number;
+	mean_loss?: number;
+	epsilon?: number;
+	started_at: string;
+	completed_at?: string;
+}
+
+/** POST /api/v1/stocks/sync — fetch and persist daily OHLCV candles for a symbol */
+export function useSyncStockPrices() {
+	return useMutation({
+		mutationFn: (payload: { symbol: string; days?: number }) => {
+			const params = new URLSearchParams({ symbol: payload.symbol });
+			if (payload.days) params.set("days", String(payload.days));
+			return requestJson<SyncStockPricesResponse>(`/api/v1/stocks/sync?${params}`, { method: "POST" });
+		},
+	});
+}
+
+/** GET /api/v1/stocks/history — retrieve stored price history for a symbol */
+export function useStockHistory(symbol: string, limit = 90, enabled = true) {
+	return useQuery<StockHistoryResponse>({
+		queryKey: ["stock-history", symbol, limit],
+		queryFn: () =>
+			requestJson<StockHistoryResponse>(
+				`/api/v1/stocks/history?symbol=${encodeURIComponent(symbol)}&limit=${limit}`,
+			),
+		enabled: enabled && Boolean(symbol),
+		staleTime: 60_000,
+	});
+}
+
+/** GET /api/v1/stocks/stats — DB storage statistics */
+export function useStockDbStats(enabled = true) {
+	return useQuery<StockDbStatsResponse>({
+		queryKey: ["stock-db-stats"],
+		queryFn: () => requestJson<StockDbStatsResponse>("/api/v1/stocks/stats"),
+		enabled,
+		staleTime: 30_000,
+		refetchInterval: enabled ? 60_000 : false,
+	});
+}
+
+/** POST /api/v1/rl/daily-train — run a full daily training cycle for the current user */
+export function useDailyTrain() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (payload?: { symbols?: string; epochs?: number }) => {
+			const params = new URLSearchParams();
+			if (payload?.symbols) params.set("symbols", payload.symbols);
+			if (payload?.epochs) params.set("epochs", String(payload.epochs));
+			const qs = params.toString();
+			return requestJson<DailyTrainResponse>(`/api/v1/rl/daily-train${qs ? `?${qs}` : ""}`, {
+				method: "POST",
+			});
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["agent-status"] });
+			queryClient.invalidateQueries({ queryKey: ["training-runs"] });
+		},
+	});
+}
+
+/** GET /api/v1/rl/training-runs — list historical training runs */
+export function useTrainingRuns(limit = 20, enabled = true) {
+	return useQuery<TrainingRunRecord[]>({
+		queryKey: ["training-runs", limit],
+		queryFn: () =>
+			requestJson<TrainingRunRecord[]>(`/api/v1/rl/training-runs?limit=${limit}`),
+		enabled,
+		staleTime: 30_000,
+		refetchInterval: enabled ? 60_000 : false,
+	});
+}

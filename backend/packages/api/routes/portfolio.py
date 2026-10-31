@@ -244,7 +244,7 @@ async def log_trade(
             raise HTTPException(status_code=400, detail="Insufficient shares to sell")
         portfolio_row.cash = float(portfolio_row.cash) + cost
 
-    portfolio_row.updated_at = datetime.now(timezone.utc)
+    portfolio_row.updated_at = datetime.utcnow()  # naive UTC — matches TIMESTAMP WITHOUT TIME ZONE column
     session.add(portfolio_row)
 
     trade = AgentActionDB(
@@ -255,8 +255,8 @@ async def log_trade(
         price=float(payload.price),
         confidence=float(payload.confidence),
         model_version="manual",
-        executed_at=datetime.now(timezone.utc),
-        timestamp=datetime.now(timezone.utc),
+        executed_at=datetime.utcnow(),  # naive UTC — matches TIMESTAMP WITHOUT TIME ZONE
+        timestamp=datetime.utcnow(),
     )
     session.add(trade)
     await session.commit()

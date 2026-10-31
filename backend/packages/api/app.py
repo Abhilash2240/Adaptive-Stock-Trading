@@ -79,15 +79,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     provider = get_data_provider()
     await provider.start()
+
+    from packages.data.storage import get_storage_service, reset_storage_service
+    storage = get_storage_service()
+    await storage.start()
+
     agent = get_agent_service()
+    settings = get_settings()
     try:
         app.state.data_provider = provider
+        app.state.storage_service = storage
         app.state.agent_service = agent
         agent.start_cleanup_task()
+        if settings.daily_train_enabled:
+            agent.start_daily_scheduler(interval_hours=settings.daily_train_interval_hours)
         yield
     finally:
+        await agent.stop_daily_scheduler()
         await agent.stop_cleanup_task()
+        await storage.stop()
         await provider.stop()
+        reset_storage_service()
         reset_agent_service()
         # Close database connections
         try:
@@ -208,6 +220,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if isinstance(provider, TwelveDataProvider):
             try:
                 data = await provider.fetch_quote_detail(sym)
+                from packages.data.storage import get_storage_service
+                await get_storage_service().store_quote_direct(
+                    symbol=sym,
+                    price=float(data.get("close") or data.get("price") or 0),
+                    volume=int(float(data.get("volume") or 0)),
+                    open_price=float(data.get("open") or 0),
+                    high=float(data.get("high") or 0),
+                    low=float(data.get("low") or 0),
+                )
                 return {
                     "symbol": data.get("symbol", sym),
                     "name": data.get("name", sym),
@@ -331,9 +352,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         user_portfolio: dict[str, float | int] | None = None
         portfolio_refreshed_at = 0.0
         try:
+            from packages.data.storage import get_storage_service
+            storage_service = get_storage_service()
             async for quote in provider.stream_quotes():
                 quote_payload = quote.model_dump(mode="json")
                 agent_service.on_quote(quote_payload, user_id=user_id)
+                # Persist stock price in database
+                await storage_service.record_quote(quote_payload)
 
                 now = time.monotonic()
                 if user_portfolio is None or now - portfolio_refreshed_at >= 4.0:
@@ -444,15 +469,239 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/v1/rl/train", response_model=dict)
     async def trigger_training(
-        current_user: AuthenticatedUser = Depends(require_admin),
-        agent: AgentService = Depends(get_agent_service),
+        symbol: str | None = Query(None, description="Optional stock symbol to train on"),
+        current_user: AuthenticatedUser = Depends(get_current_user),
+        agent_service: AgentService = Depends(get_agent_service),
     ) -> dict:
-        loss = agent._agent.train_step()
+        """
+        Train the RL agent on stock prices stored in the database.
+        Ensures daily stock price records exist and runs a DDQN training cycle.
+        """
+        from packages.data.storage import get_storage_service
+        from packages.agent.historical import DatabaseDataLoader
+        from packages.db.repositories import TrainingRepository
+
+        user_id = current_user.id
+        settings = get_settings()
+        storage = get_storage_service()
+
+        train_symbols = [s.strip().upper() for s in (symbol or settings.symbols).split(",") if s.strip()]
+        if not train_symbols:
+            train_symbols = ["AAPL"]
+
+        # Ensure database contains stored stock prices for training
+        for sym in train_symbols:
+            async with get_session_ctx() as session:
+                stored = await DatabaseDataLoader.load_from_db(session, sym, limit=300)
+            if len(stored) < 20:
+                await storage.sync_daily_prices(sym, days=30)
+
+        # Load stored stock prices from PostgreSQL/SQLite database
+        all_quotes = []
+        async with get_session_ctx() as session:
+            for sym in train_symbols:
+                sym_quotes = await DatabaseDataLoader.load_from_db(session, sym, limit=300)
+                all_quotes.extend(sym_quotes)
+
+        # Train on database stored prices
+        if all_quotes:
+            train_res = agent_service.train_on_quotes(all_quotes, user_id=user_id, epochs=1)
+            loss = train_res.get("mean_loss")
+            agent = agent_service._get_user_agent(user_id)
+            epsilon = agent.epsilon
+
+            # Persist training run in database
+            try:
+                async with get_session_ctx() as session:
+                    t_repo = TrainingRepository(session)
+                    run = await t_repo.create_run(
+                        model_name=settings.agent_model_name,
+                        hyperparameters={
+                            "source": "database",
+                            "symbols": train_symbols,
+                            "quotes_count": len(all_quotes),
+                        },
+                    )
+                    if loss is not None:
+                        await t_repo.log_metric(
+                            run_id=run.id,
+                            episode=1,
+                            loss=float(loss),
+                            reward=float(train_res.get("total_reward", 0.0)),
+                            epsilon=float(epsilon),
+                        )
+                    await t_repo.complete_run(
+                        run_id=run.id,
+                        best_reward=train_res.get("total_reward"),
+                        final_loss=loss,
+                    )
+            except Exception as exc:
+                logger.warning("Could not log training run to DB: %s", exc)
+
+            return {
+                "status": "success",
+                "source": "database",
+                "symbols": train_symbols,
+                "data_points": len(all_quotes),
+                "loss": round(loss, 6) if loss is not None else None,
+                "epsilon": round(epsilon, 4),
+                "steps": agent.step_count,
+            }
+
+        # Fallback to in-memory train step if no DB data available
+        loss = agent_service._get_user_agent(user_id).train_step()
+        agent = agent_service._get_user_agent(user_id)
         return {
-            "loss": loss,
-            "epsilon": round(agent._agent.epsilon, 4),
-            "steps": agent._agent.step_count,
+            "status": "success",
+            "source": "memory",
+            "loss": round(loss, 6) if loss is not None else None,
+            "epsilon": round(agent.epsilon, 4),
+            "steps": agent.step_count,
         }
+
+    @app.post("/api/v1/rl/daily-train", response_model=dict)
+    async def daily_training_endpoint(
+        symbols: str | None = Query(None, description="Comma-separated symbols to daily train on"),
+        epochs: int = Query(1, ge=1, le=10),
+        current_user: AuthenticatedUser = Depends(get_current_user),
+        agent_service: AgentService = Depends(get_agent_service),
+    ) -> dict:
+        """
+        Trigger an automated daily training run using stock prices stored in the database.
+        """
+        from packages.data.storage import get_storage_service
+        from packages.agent.historical import DatabaseDataLoader
+        from packages.db.repositories import TrainingRepository
+
+        user_id = current_user.id
+        settings = get_settings()
+        storage = get_storage_service()
+
+        train_symbols = [s.strip().upper() for s in (symbols or settings.symbols).split(",") if s.strip()]
+        if not train_symbols:
+            train_symbols = ["AAPL"]
+
+        # 1. Sync any missing daily prices into the database
+        for sym in train_symbols:
+            await storage.sync_daily_prices(sym, days=30)
+
+        # 2. Load all historical stock prices from DB
+        all_quotes = []
+        async with get_session_ctx() as session:
+            for sym in train_symbols:
+                quotes = await DatabaseDataLoader.load_from_db(session, sym, limit=500)
+                all_quotes.extend(quotes)
+
+        # 3. Train agent across epochs
+        result = agent_service.train_on_quotes(all_quotes, user_id=user_id, epochs=epochs)
+
+        # 4. Record the daily training run in the DB
+        try:
+            async with get_session_ctx() as session:
+                t_repo = TrainingRepository(session)
+                run = await t_repo.create_run(
+                    model_name=settings.agent_model_name,
+                    hyperparameters={
+                        "type": "daily_training",
+                        "source": "database",
+                        "symbols": train_symbols,
+                        "epochs": epochs,
+                        "quotes_count": len(all_quotes),
+                    },
+                )
+                if result.get("mean_loss") is not None:
+                    await t_repo.log_metric(
+                        run_id=run.id,
+                        episode=epochs,
+                        loss=float(result["mean_loss"]),
+                        reward=float(result.get("total_reward", 0.0)),
+                        epsilon=float(result.get("epsilon", 0.0)),
+                    )
+                await t_repo.complete_run(
+                    run_id=run.id,
+                    best_reward=result.get("total_reward"),
+                    final_loss=result.get("final_loss"),
+                )
+        except Exception as exc:
+            logger.warning("Could not log daily training run: %s", exc)
+
+        return {
+            "status": "success",
+            "message": "Daily training completed on stored database stock prices",
+            "symbols": train_symbols,
+            "data_points": len(all_quotes),
+            "epochs": epochs,
+            "training_results": result,
+        }
+
+    @app.post("/api/v1/stocks/sync", response_model=dict)
+    async def sync_stock_prices_endpoint(
+        symbol: str = Query("AAPL"),
+        days: int = Query(30, ge=1, le=365),
+        current_user: AuthenticatedUser = Depends(get_current_user),
+    ) -> dict:
+        """Fetch and store daily stock prices into PostgreSQL/SQLite database."""
+        from packages.data.storage import get_storage_service
+        storage = get_storage_service()
+        synced_count = await storage.sync_daily_prices(symbol=symbol, days=days)
+        stats = await storage.get_stored_stats()
+        return {
+            "status": "success",
+            "symbol": symbol.upper(),
+            "synced_days": synced_count,
+            "database_stats": stats,
+        }
+
+    @app.get("/api/v1/stocks/history", response_model=dict)
+    async def get_stock_history_endpoint(
+        symbol: str = Query("AAPL"),
+        limit: int = Query(100, ge=1, le=1000),
+        current_user: AuthenticatedUser = Depends(get_current_user),
+    ) -> dict:
+        """Get stored historical stock prices from the database for a symbol."""
+        from packages.data.storage import get_storage_service
+        storage = get_storage_service()
+        prices = await storage.get_stored_prices(symbol=symbol, limit=limit)
+        return {
+            "symbol": symbol.upper(),
+            "count": len(prices),
+            "prices": prices,
+        }
+
+    @app.get("/api/v1/stocks/stats", response_model=dict)
+    async def get_stock_db_stats_endpoint(
+        current_user: AuthenticatedUser = Depends(get_current_user),
+    ) -> dict:
+        """Get statistics about stock prices stored in the database."""
+        from packages.data.storage import get_storage_service
+        storage = get_storage_service()
+        stats = await storage.get_stored_stats()
+        return {"status": "operational", "database_stats": stats}
+
+    @app.get("/api/v1/rl/training-runs", response_model=list[dict])
+    async def get_training_runs_endpoint(
+        limit: int = Query(20, ge=1, le=100),
+        current_user: AuthenticatedUser = Depends(get_current_user),
+    ) -> list[dict]:
+        """List historical training runs from the database."""
+        from packages.db.repositories import TrainingRepository
+        async with get_session_ctx() as session:
+            repo = TrainingRepository(session)
+            runs = await repo.list_runs(limit=limit)
+            return [
+                {
+                    "id": r.id,
+                    "model_name": r.model_name,
+                    "hyperparameters": r.hyperparameters,
+                    "status": r.status,
+                    "total_episodes": r.total_episodes,
+                    "best_reward": r.best_reward,
+                    "final_loss": r.final_loss,
+                    "started_at": r.started_at.isoformat() if r.started_at else None,
+                    "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+                }
+                for r in runs
+            ]
 
     return app
 

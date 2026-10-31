@@ -1,32 +1,67 @@
+"""
+Test configuration for the backend test suite.
+
+Sets environment variables BEFORE any package imports so that get_settings()
+picks up the test overrides. For integration tests that need a live database,
+the DB fixtures are defined here but are NOT autouse — opt in per test file.
+"""
 import os
-import pytest_asyncio
+import asyncio
+from pathlib import Path
 
-# Configure test environment BEFORE any imports that use Settings
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite://")
-os.environ.setdefault("ENVIRONMENT", "test")
-os.environ.setdefault("DATA_PROVIDER", "mock")
+# ---------------------------------------------------------------------------
+# Set env vars before any package imports so @lru_cache picks them up.
+# Use SQLite for unit tests that need DB; integration tests opt into real DB.
+# ---------------------------------------------------------------------------
+_test_db_path = Path(__file__).parent / "test_trading.db"
+os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_test_db_path.as_posix()}"
+os.environ["ENVIRONMENT"] = "test"
+os.environ["DATA_PROVIDER"] = "mock"
+os.environ.setdefault("TWELVEDATA_API_KEY", "")
+
+# Clear the lru_cache so the new env vars take effect
+from packages.shared.config import get_settings
+get_settings.cache_clear()
+
+# ---------------------------------------------------------------------------
+# Session-scoped DB initialization: create all tables once per test session.
+# We use a plain synchronous pytest fixture that calls asyncio.run() directly.
+# This avoids pytest-asyncio loop management issues.
+# ---------------------------------------------------------------------------
+
+_WELL_KNOWN_TEST_IDS = [900001, 900002, 900003, 910004, 920001]
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True)
-async def init_test_db():
-    """Initialize the test database with tables."""
+def _run_init_db() -> None:
+    """Run init_db() and cleanup stale test data in a fresh event loop."""
+    from packages.shared.config import get_settings
     from sqlalchemy import Integer
 
-    # Reset globals in engine module to ensure we start fresh
+    get_settings.cache_clear()
+
     import packages.db.engine as engine_module
     from packages.db.models import AgentActionDB
 
+    # Reset singletons so the test DB URL is picked up
     engine_module._engine = None
     engine_module._session_factory = None
 
-    # SQLite only autoincrements an exact INTEGER PRIMARY KEY; production uses
-    # BigInteger for PostgreSQL, so adapt the test table metadata only.
+    # SQLite doesn't support BigInteger PK natively — cast to Integer
     AgentActionDB.__table__.c.id.type = Integer()
 
-    # Now initialize database tables
-    await engine_module.init_db()
-    
-    yield
-    
-    # Cleanup
-    await engine_module.close_db()
+    async def _init():
+        await engine_module.init_db()
+        # Clean up hard-coded test IDs so re-runs don't hit UNIQUE violations
+        from packages.db.engine import get_session_ctx
+        async with get_session_ctx() as session:
+            for tid in _WELL_KNOWN_TEST_IDS:
+                existing = await session.get(AgentActionDB, tid)
+                if existing is not None:
+                    await session.delete(existing)
+            await session.commit()
+
+    asyncio.run(_init())
+
+
+# Run once at import time so tables exist before any test
+_run_init_db()

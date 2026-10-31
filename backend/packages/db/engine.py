@@ -83,25 +83,30 @@ def get_engine() -> AsyncEngine:
     url = _build_connection_url(raw_url)
 
     # Build engine kwargs based on database type
-    engine_kwargs = {
+    engine_kwargs: dict = {
         "echo": settings.log_level.upper() == "DEBUG",
-        "pool_pre_ping": True,
     }
-    
+
     # SQLite and PostgreSQL need different configurations
     if url.startswith("sqlite"):
-        # SQLite uses StaticPool by default and doesn't support pool_size/max_overflow
-        connect_args = {}
+        # SQLite with aiosqlite: use StaticPool and disable pool_pre_ping
+        # (pool_pre_ping causes hangs on Windows with aiosqlite).
+        from sqlalchemy.pool import StaticPool
+
+        engine_kwargs["poolclass"] = StaticPool
+        engine_kwargs["pool_pre_ping"] = False
+        connect_args = {"check_same_thread": False}
     else:
         # PostgreSQL pool configuration
+        engine_kwargs["pool_pre_ping"] = True
         engine_kwargs["pool_size"] = 5
         engine_kwargs["max_overflow"] = 10
         connect_args = {}
-        
+
         if "neon.tech" in url:
             # Neon serverless uses SSL by default
             connect_args = {"ssl": "require"}
-    
+
     engine_kwargs["connect_args"] = connect_args
 
     _engine = create_async_engine(url, **engine_kwargs)

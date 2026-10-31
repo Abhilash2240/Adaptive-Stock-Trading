@@ -70,8 +70,10 @@ def test_agent_service_keeps_interleaved_symbol_histories_separate():
     msft_action = service.get_action("MSFT", portfolio)
 
     assert aapl_prices.isdisjoint(msft_prices)
-    assert len(aapl_environment.features._closes) == 30
-    assert len(msft_environment.features._closes) == 30
+    # Each environment is pre-warmed with 30 synthetic quotes at creation,
+    # then receives 30 real quotes -- total 60 entries in the deque.
+    assert len(aapl_environment.features._closes) == 60
+    assert len(msft_environment.features._closes) == 60
     assert aapl_action.side in (OrderSide.HOLD, OrderSide.BUY, OrderSide.SELL)
     assert msft_action.side in (OrderSide.HOLD, OrderSide.BUY, OrderSide.SELL)
     assert aapl_action.confidence > 0

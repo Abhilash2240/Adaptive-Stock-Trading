@@ -7,6 +7,7 @@ vite.config.ts.*
 .env*
 !.env.example
 !backend/.env.example
+!frontend/.env.example
 !apps/client/.env.example
 .firebase*
 .vercel
@@ -19,5 +20,8 @@ stats/
 .lighthouseci/
 __pycache__/
 *.pyc
+*.db
+models/
+.pytest_cache/
 tmpclaude-*
 nul

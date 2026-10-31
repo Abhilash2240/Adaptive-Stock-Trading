@@ -9,6 +9,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { setTokenGetter } from "@/hooks/use-api";
 import Dashboard from "@/pages/dashboard";
+import StocksPage from "@/pages/stocks";
 import Portfolio from "@/pages/portfolio";
 import Trades from "@/pages/trades";
 import Agent from "@/pages/agent";
@@ -59,6 +60,7 @@ function AppGate() {
   return (
     <Switch>
       <Route path="/dashboard"><Dashboard /></Route>
+      <Route path="/stocks"><StocksPage /></Route>
       <Route path="/portfolio"><Portfolio /></Route>
       <Route path="/trades"><Trades /></Route>
       <Route path="/agent"><Agent /></Route>

@@ -4,6 +4,7 @@ import {
   Brain,
   List,
   Settings,
+  TrendingUp,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -15,7 +16,8 @@ interface SidebarProps {
 }
 
 const navItems = [
-  { key: "dashboard", label: "Dashboard",  icon: BarChart3, route: "/dashboard" },
+  { key: "dashboard", label: "Dashboard",   icon: BarChart3, route: "/dashboard" },
+  { key: "stocks",    label: "Stock Prices", icon: TrendingUp, route: "/stocks"   },
   { key: "portfolio", label: "Portfolio",   icon: Briefcase, route: "/portfolio" },
   { key: "trades",    label: "Trades",      icon: List,      route: "/trades"    },
   { key: "agent",     label: "AI Agent",    icon: Brain,     route: "/agent"     },

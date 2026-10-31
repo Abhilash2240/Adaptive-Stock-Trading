@@ -1,7 +1,8 @@
 import asyncio
 import random
 from collections.abc import AsyncIterator, Iterable
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from typing import Any
 
 from packages.data.provider import BaseAsyncProvider
 from packages.shared.schemas import Quote
@@ -63,3 +64,35 @@ class MockDataProvider(BaseAsyncProvider):
                     Quote(symbol=symbol, price=round(next_price, 2), volume=random.randint(1000, 50000), timestamp=now)
                 )
             await asyncio.sleep(self._interval)
+
+    def generate_daily_series(
+        self,
+        symbol: str,
+        days: int = 30,
+    ) -> list[dict[str, Any]]:
+        """Generate realistic daily OHLCV series for testing and mock training."""
+        results = []
+        now = datetime.now(timezone.utc)
+        current_price = self._prices.get(symbol.upper(), 150.0)
+        prices = [current_price]
+        for _ in range(days - 1):
+            change = random.uniform(-0.025, 0.025) * prices[-1]
+            prices.append(max(10.0, prices[-1] + change))
+        start_date = now - timedelta(days=days)
+        for i, p in enumerate(prices):
+            date = start_date + timedelta(days=i)
+            high = round(p * (1.0 + random.uniform(0.005, 0.02)), 2)
+            low = round(p * (1.0 - random.uniform(0.005, 0.02)), 2)
+            open_p = round(p * (1.0 + random.uniform(-0.01, 0.01)), 2)
+            close_p = round(p, 2)
+            vol = random.randint(500_000, 5_000_000)
+            results.append({
+                "symbol": symbol.upper(),
+                "open": open_p,
+                "high": max(high, open_p, close_p),
+                "low": min(low, open_p, close_p),
+                "close": close_p,
+                "volume": vol,
+                "timestamp": date,
+            })
+        return results

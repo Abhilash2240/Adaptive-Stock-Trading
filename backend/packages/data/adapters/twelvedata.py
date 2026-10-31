@@ -188,3 +188,51 @@ class TwelveDataProvider(BaseAsyncProvider):
         resp = await client.get(url, params=params)
         resp.raise_for_status()
         return resp.json()
+
+    async def fetch_time_series(
+        self,
+        symbol: str,
+        interval: str = "1day",
+        outputsize: int = 30,
+    ) -> list[dict[str, Any]]:
+        """
+        GET /time_series?symbol=AAPL&interval=1day&outputsize=30&apikey=xxx
+        Returns OHLCV candles sorted chronologically (oldest first).
+        """
+        client = self._ensure_client()
+        url = f"{_BASE_URL}/time_series"
+        params = {
+            "symbol": symbol.upper(),
+            "interval": interval,
+            "outputsize": str(outputsize),
+            "apikey": self._api_key,
+        }
+        resp = await client.get(url, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        values = data.get("values", [])
+        results = []
+        for v in reversed(values):
+            try:
+                dt_str = v.get("datetime", "")
+                dt = None
+                for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+                    try:
+                        dt = datetime.strptime(dt_str.strip(), fmt).replace(tzinfo=timezone.utc)
+                        break
+                    except ValueError:
+                        pass
+                if dt is None:
+                    dt = datetime.now(timezone.utc)
+                results.append({
+                    "symbol": symbol.upper(),
+                    "open": float(v.get("open", 0)),
+                    "high": float(v.get("high", 0)),
+                    "low": float(v.get("low", 0)),
+                    "close": float(v.get("close", 0)),
+                    "volume": int(float(v.get("volume", 0))),
+                    "timestamp": dt,
+                })
+            except (ValueError, KeyError):
+                continue
+        return results

@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, Sequence
 
-from sqlalchemy import select, update, delete
+from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.db.models import (
@@ -98,6 +98,23 @@ class UserSettingsRepository:
             await self.session.flush()
             return existing
 
+        # Ensure the FK-parent row exists in `users` for Clerk-managed user IDs.
+        # The `users` table is unused for auth (Clerk handles that), but the
+        # FK constraint `user_settings.user_id → users.id` must still be satisfied.
+        user_exists = await self.session.execute(
+            select(UserDB).where(UserDB.id == user_id)
+        )
+        if user_exists.scalar_one_or_none() is None:
+            stub = UserDB(
+                id=user_id,
+                username=user_id,          # unique; Clerk user ID used as placeholder
+                password_hash="__clerk__", # sentinel — not used for login
+                is_active=True,
+                created_at=utcnow(),
+            )
+            self.session.add(stub)
+            await self.session.flush()
+
         settings = UserSettingsDB(user_id=user_id, **kwargs)
         self.session.add(settings)
         await self.session.flush()
@@ -111,27 +128,55 @@ class UserSettingsRepository:
 # NOT CURRENTLY USED — reserved for persisted historical quote storage and
 # replay, not yet wired into any route. See repository review, 2026-08-28.
 class QuoteRepository:
+    """CRUD helpers for time-series stock quote ticks."""
 
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def insert(self, symbol: str, price: float, volume: int, timestamp: datetime) -> None:
-        quote = QuoteDB(symbol=symbol, price=price, volume=volume, timestamp=timestamp)
+    async def insert(self, symbol: str, price: float, volume: int, timestamp: datetime) -> QuoteDB:
+        quote = QuoteDB(symbol=symbol.upper(), price=price, volume=volume, timestamp=timestamp)
         self.session.add(quote)
+        await self.session.flush()
+        return quote
 
     async def insert_batch(self, quotes: list[dict]) -> None:
-        objects = [QuoteDB(**q) for q in quotes]
+        objects = [QuoteDB(**{**q, "symbol": q.get("symbol", "").upper()}) for q in quotes]
         self.session.add_all(objects)
+        await self.session.flush()
 
     async def get_latest(self, symbol: str, limit: int = 100) -> Sequence[QuoteDB]:
         stmt = (
             select(QuoteDB)
-            .where(QuoteDB.symbol == symbol)
+            .where(QuoteDB.symbol == symbol.upper())
             .order_by(QuoteDB.timestamp.desc())
             .limit(limit)
         )
         result = await self.session.execute(stmt)
         return result.scalars().all()
+
+    async def get_history(
+        self,
+        symbol: str,
+        limit: int = 1000,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> Sequence[QuoteDB]:
+        """Return historical quotes chronologically ascending for agent training."""
+        stmt = select(QuoteDB).where(QuoteDB.symbol == symbol.upper())
+        if start is not None:
+            stmt = stmt.where(QuoteDB.timestamp >= start)
+        if end is not None:
+            stmt = stmt.where(QuoteDB.timestamp <= end)
+        stmt = stmt.order_by(QuoteDB.timestamp.asc()).limit(limit)
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
+
+    async def count(self, symbol: str | None = None) -> int:
+        stmt = select(func.count()).select_from(QuoteDB)
+        if symbol is not None:
+            stmt = stmt.where(QuoteDB.symbol == symbol.upper())
+        result = await self.session.execute(stmt)
+        return int(result.scalar_one() or 0)
 
 
 # --------------------------------------------------------------------------- #
@@ -141,13 +186,48 @@ class QuoteRepository:
 # NOT CURRENTLY USED — reserved for historical OHLCV storage and training data,
 # not yet wired into any route. See repository review, 2026-08-28.
 class OHLCVRepository:
+    """CRUD helpers for OHLCV daily and intraday candles."""
 
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    async def insert(
+        self,
+        symbol: str,
+        open: float,
+        high: float,
+        low: float,
+        close: float,
+        volume: int,
+        timestamp: datetime,
+    ) -> OHLCVDB:
+        candle = OHLCVDB(
+            symbol=symbol.upper(),
+            open=open,
+            high=high,
+            low=low,
+            close=close,
+            volume=volume,
+            timestamp=timestamp,
+        )
+        self.session.add(candle)
+        await self.session.flush()
+        return candle
+
     async def insert_batch(self, candles: list[dict]) -> None:
-        objects = [OHLCVDB(**c) for c in candles]
+        objects = [OHLCVDB(**{**c, "symbol": c.get("symbol", "").upper()}) for c in candles]
         self.session.add_all(objects)
+        await self.session.flush()
+
+    async def get_latest(self, symbol: str, limit: int = 100) -> Sequence[OHLCVDB]:
+        stmt = (
+            select(OHLCVDB)
+            .where(OHLCVDB.symbol == symbol.upper())
+            .order_by(OHLCVDB.timestamp.desc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
 
     async def get_range(
         self,
@@ -158,7 +238,7 @@ class OHLCVRepository:
         stmt = (
             select(OHLCVDB)
             .where(
-                OHLCVDB.symbol == symbol,
+                OHLCVDB.symbol == symbol.upper(),
                 OHLCVDB.timestamp >= start,
                 OHLCVDB.timestamp <= end,
             )
@@ -166,6 +246,30 @@ class OHLCVRepository:
         )
         result = await self.session.execute(stmt)
         return result.scalars().all()
+
+    async def get_history(
+        self,
+        symbol: str,
+        limit: int = 1000,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> Sequence[OHLCVDB]:
+        """Return historical candles chronologically ascending for agent training."""
+        stmt = select(OHLCVDB).where(OHLCVDB.symbol == symbol.upper())
+        if start is not None:
+            stmt = stmt.where(OHLCVDB.timestamp >= start)
+        if end is not None:
+            stmt = stmt.where(OHLCVDB.timestamp <= end)
+        stmt = stmt.order_by(OHLCVDB.timestamp.asc()).limit(limit)
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
+
+    async def count(self, symbol: str | None = None) -> int:
+        stmt = select(func.count()).select_from(OHLCVDB)
+        if symbol is not None:
+            stmt = stmt.where(OHLCVDB.symbol == symbol.upper())
+        result = await self.session.execute(stmt)
+        return int(result.scalar_one() or 0)
 
 
 # --------------------------------------------------------------------------- #

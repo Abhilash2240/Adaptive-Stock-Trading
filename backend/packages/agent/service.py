@@ -71,6 +71,7 @@ class AgentService:
         self._active_users: set[str] = set()
         self._background_tasks: set[asyncio.Task] = set()
         self._cleanup_task: asyncio.Task | None = None
+        self._daily_scheduler_task: asyncio.Task | None = None
 
         self._train_interval = max(1, train_interval)
         self._idle_timeout_seconds = max(0.0, idle_timeout_seconds)
@@ -157,6 +158,140 @@ class AgentService:
 
         return evicted_users
 
+    def start_daily_scheduler(self, interval_hours: float = 24.0) -> None:
+        """Start the daily training scheduler once an event loop is running."""
+        if self._daily_scheduler_task is None or self._daily_scheduler_task.done():
+            self._daily_scheduler_task = asyncio.create_task(
+                self._daily_scheduler_loop(interval_hours * 3600.0)
+            )
+
+    async def stop_daily_scheduler(self) -> None:
+        """Stop the daily training scheduler during application shutdown."""
+        if self._daily_scheduler_task is None:
+            return
+        self._daily_scheduler_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await self._daily_scheduler_task
+        self._daily_scheduler_task = None
+
+    async def _daily_scheduler_loop(self, interval_seconds: float) -> None:
+        """Periodically run daily training for agents using stored database stock prices."""
+        logger.info("Daily agent training scheduler active (runs every %.1f hours)", interval_seconds / 3600.0)
+        while True:
+            try:
+                await asyncio.sleep(interval_seconds)
+                logger.info("Starting scheduled daily training cycle on stored stock prices...")
+                await self.run_daily_training_for_all_users()
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.error("Error during scheduled daily agent training: %s", exc)
+
+    async def run_daily_training_for_all_users(self) -> dict[str, Any]:
+        """Load stored prices from the database and train all active user agents."""
+        from packages.data.storage import get_storage_service
+        from packages.shared.config import get_settings
+        settings = get_settings()
+        symbols = [s.strip().upper() for s in settings.symbols.split(",") if s.strip()]
+        storage = get_storage_service()
+
+        for sym in symbols:
+            await storage.sync_daily_prices(sym, days=30)
+
+        all_quotes: list[dict[str, Any]] = []
+        for sym in symbols:
+            quotes = await storage.get_stored_prices(sym, limit=300)
+            all_quotes.extend(quotes)
+
+        if not all_quotes:
+            logger.warning("No stored stock prices found for daily training")
+            return {"status": "no_data"}
+
+        with self._agent_lock:
+            target_users = set(self._active_users) | {_DEFAULT_USER_ID}
+
+        results = {}
+        for uid in target_users:
+            res = self.train_on_quotes(all_quotes, user_id=uid, epochs=1)
+            results[uid] = res
+            logger.info("Daily training completed for user %s: %s", uid, res)
+
+        return {"status": "completed", "results": results}
+
+    def train_on_quotes(
+        self,
+        quotes: list[dict[str, Any]],
+        user_id: str | None = None,
+        epochs: int = 1,
+    ) -> dict[str, Any]:
+        """
+        Train the DDQN agent on stored stock prices from the database.
+        Streams quotes chronologically through TradingEnvironment.
+        """
+        resolved_user_id = user_id or _DEFAULT_USER_ID
+        self._begin_user_operation(resolved_user_id)
+        try:
+            return self._train_on_quotes_locked(quotes, resolved_user_id, epochs)
+        finally:
+            self._end_user_operation(resolved_user_id)
+
+    def _train_on_quotes_locked(
+        self,
+        quotes: list[dict[str, Any]],
+        user_id: str,
+        epochs: int = 1,
+    ) -> dict[str, Any]:
+        if not quotes:
+            return {"error": "no_quotes", "steps": 0}
+
+        sorted_quotes = sorted(
+            quotes,
+            key=lambda q: q.get("timestamp") or datetime.min.replace(tzinfo=timezone.utc),
+        )
+
+        agent = self._get_user_agent(user_id)
+        total_steps = 0
+        total_reward = 0.0
+        losses: list[float] = []
+
+        for _ in range(max(1, epochs)):
+            env = TradingEnvironment()
+            prev_state = None
+            action = env.HOLD
+
+            for q in sorted_quotes:
+                result = env.on_quote(q, action)
+                if result is None:
+                    continue
+                next_state, reward, done = result
+                if prev_state is not None:
+                    with self._agent_lock:
+                        agent.remember(prev_state, action, reward, next_state, done)
+                        loss = agent.train_step()
+                        if loss is not None:
+                            losses.append(loss)
+                prev_state = next_state
+                with self._agent_lock:
+                    action = agent.act(next_state, training=True)
+                total_reward += reward
+                total_steps += 1
+                if done:
+                    break
+
+        with self._agent_lock:
+            model_path = _get_user_model_path(user_id)
+            model_path.parent.mkdir(exist_ok=True)
+            agent.save(str(model_path))
+
+        return {
+            "steps": total_steps,
+            "total_reward": round(total_reward, 4),
+            "mean_loss": round(float(np.mean(losses)), 6) if losses else None,
+            "final_loss": round(float(losses[-1]), 6) if losses else None,
+            "epsilon": round(float(agent.epsilon), 4),
+            "buffer_size": len(agent.replay),
+        }
+
     # -- Per-user agent management ----------------------------------
     def _get_user_agent(self, user_id: str) -> DDQNAgent:
         """
@@ -206,9 +341,15 @@ class AgentService:
                 self._user_training_action[user_id] = {}
 
             if normalized_symbol not in self._user_environments[user_id]:
-                self._user_environments[user_id][normalized_symbol] = TradingEnvironment()
-                self._user_training_ticks[user_id][normalized_symbol] = 0
-                self._user_training_state[user_id][normalized_symbol] = None
+                env = TradingEnvironment()
+                # Warmup environment with initial quote sequence for feature indicators
+                base_p = 150.0 + (hash(normalized_symbol) % 150)
+                for i in range(30):
+                    p = base_p + (i * 0.15) + (i % 3) * 0.1
+                    env.on_quote({"symbol": normalized_symbol, "price": p, "close": p, "volume": 10000 + i * 500})
+                self._user_environments[user_id][normalized_symbol] = env
+                self._user_training_ticks[user_id][normalized_symbol] = 30
+                self._user_training_state[user_id][normalized_symbol] = env.get_state(env.portfolio)
                 self._user_training_action[user_id][normalized_symbol] = _HOLD_ACTION
 
             return self._user_environments[user_id][normalized_symbol]
@@ -393,8 +534,9 @@ class AgentService:
             user_id = _DEFAULT_USER_ID
         
         agent = self._get_user_agent(user_id)
+        current_state = AgentState.RUNNING if agent.step_count > 0 else self._state
         return AgentStatus(
-            state=self._state,
+            state=current_state,
             model_version=self._model_version,
             last_action=self._last_action,
             epsilon=round(agent.epsilon, 4),

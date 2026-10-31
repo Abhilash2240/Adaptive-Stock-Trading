@@ -1,4 +1,5 @@
 from functools import lru_cache
+import os
 from pathlib import Path
 
 from pydantic import model_validator
@@ -38,6 +39,10 @@ class Settings(BaseSettings):
     agent_train_interval: int = 32
     agent_idle_timeout_seconds: float = 1800.0
     agent_cleanup_interval_seconds: float = 300.0
+    daily_train_enabled: bool = True
+    daily_train_interval_hours: float = 24.0
+    quote_batch_size: int = 25
+    quote_flush_interval_seconds: float = 2.0
     
     # Security Configuration
     jwt_algorithm: str = "HS256"
@@ -59,6 +64,16 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def apply_provider_defaults(self) -> "Settings":
+        # Allow explicit DATABASE_URL env var to override .env
+        env_db_url = os.environ.get("DATABASE_URL")
+        if env_db_url:
+            self.database_url = env_db_url
+
+        if self.environment == "test":
+            self.data_provider = "mock"
+            if not self.database_url or "neon.tech" in self.database_url or "postgres" in self.database_url:
+                self.database_url = "sqlite+aiosqlite:///test_trading.db"
+
         # Default to twelvedata when a key is present; otherwise use mock.
         if not self.data_provider:
             self.data_provider = "twelvedata" if self.twelvedata_api_key else "mock"

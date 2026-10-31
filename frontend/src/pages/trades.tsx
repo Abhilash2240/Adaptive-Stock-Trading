@@ -64,7 +64,7 @@ export default function TradesPage() {
               label="Symbol"
               value={symbol}
               onChange={(v) => { setPage(1); setSymbol(v); }}
-              options={["ALL", "AAPL", "MSFT", "TSLA", "GOOGL", "AMZN"]}
+              options={["ALL", "AAPL", "MSFT", "GOOG", "AMZN", "TSLA", "NVDA", "META"]}
             />
             <FilterSelect
               label="Action"
@@ -108,7 +108,9 @@ export default function TradesPage() {
                       className="border-b border-border/50 hover:bg-[hsl(var(--accent)/0.04)] transition-colors duration-200"
                     >
                       <td className="py-3 pr-4 font-mono text-xs text-muted-foreground">
-                        {new Date(t.executed_at).toLocaleString()}
+                        {new Date(
+                          t.executed_at.endsWith("Z") ? t.executed_at : t.executed_at + "Z"
+                        ).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                       </td>
                       <td className="py-3 pr-4 font-semibold" style={{ fontFamily: "'Playfair Display', serif" }}>
                         {t.symbol}
