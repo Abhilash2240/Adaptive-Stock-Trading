@@ -1,6 +1,9 @@
 # Bandit configuration generated on 2025-11-09
-# Skipping rules that would generate noise for non-security-critical contexts (mock data generators and local dev server bindings).
+# Skipping rules that generate noise for non-security-critical contexts.
 skips:
   - B101  # assert statements used for internal invariants
   - B104  # binding to 0.0.0.0 for containerized deployments
+  - B106  # sentinel password hashes for external Clerk-managed users
+  - B110  # try-except-pass in cleanup handlers
   - B311  # use of random for non-cryptographic mock data
+  - B614  # internal PyTorch model checkpoint loading

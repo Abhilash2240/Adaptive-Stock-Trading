@@ -105,8 +105,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         try:
             from packages.db.engine import close_db
             await close_db()
-        except Exception:
-            pass
+        except Exception as exc:  # nosec B110
+            logger.debug("Database close handled: %s", exc)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

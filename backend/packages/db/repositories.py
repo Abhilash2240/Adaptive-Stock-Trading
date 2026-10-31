@@ -108,7 +108,7 @@ class UserSettingsRepository:
             stub = UserDB(
                 id=user_id,
                 username=user_id,          # unique; Clerk user ID used as placeholder
-                password_hash="__clerk__", # sentinel — not used for login
+                password_hash="__clerk__",  # nosec B106 - sentinel placeholder for Clerk OAuth
                 is_active=True,
                 created_at=utcnow(),
             )
